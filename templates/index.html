@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Crop, Watermark & AI Property Extractor</title>
+  <title>Property Tool - Crop, Watermark & AI Extractor</title>
   
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
   
@@ -17,8 +17,8 @@
       margin: 0 auto;
       color: #333;
     }
-    h2 { text-align: center; margin-bottom: 20px; }
-    .controls {
+    h2 { text-align: center; margin-bottom: 20px; color: #1e293b; }
+    .card-box {
       background: #ffffff;
       padding: 20px;
       border-radius: 12px;
@@ -164,7 +164,6 @@
       box-shadow: 0 2px 4px rgba(0,0,0,0.2);
       z-index: 10;
     }
-    .remove-btn:hover { background: #dc2626; }
     
     .processed-img {
       width: 100%;
@@ -175,14 +174,17 @@
       border: 1px solid #e2e8f0;
     }
 
-    #jsonResultSection {
-      margin-top: 30px;
-      background: #fff;
-      padding: 20px;
-      border-radius: 12px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    .status-text {
+      text-align: center;
+      font-weight: bold;
+      color: #0066fe;
+      margin-top: 10px;
+    }
+
+    #urlListSection, #aiExtractSection, #jsonResultSection {
       display: none;
     }
+
     pre {
       background: #0d1117;
       color: #7ee787;
@@ -191,21 +193,28 @@
       overflow-x: auto;
       font-size: 13px;
     }
-    .status-text {
-      text-align: center;
-      font-weight: bold;
-      color: #0066fe;
-      margin-top: 10px;
+
+    .badge {
+      background: #dcfce7;
+      color: #166534;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 13px;
+      display: inline-block;
+      margin-bottom: 10px;
     }
   </style>
 </head>
 <body>
 
-  <h2>Crop, Watermark & AI Property Extractor</h2>
+  <h2>Property Listing Automation</h2>
 
-  <div class="controls">
+  <!-- Step 1 Box -->
+  <div class="card-box">
+    <div style="font-weight:bold; font-size:16px; margin-bottom:15px; color:#0066fe;">STEP 1: Crop & Watermark Image Photos</div>
+    
     <div class="control-group">
-      <label>1. Select Photos:</label>
+      <label>1. Select Photos for Cropping/Watermark:</label>
       <input type="file" id="imageInput" multiple accept="image/*">
     </div>
 
@@ -233,12 +242,34 @@
     <div class="section-heading">Processed Photos Preview</div>
     <div class="processed-grid" id="processedGrid"></div>
     
-    <button class="btn btn-green" id="getAllUrlsBtn">Upload to Cloudinary & Extract JSON</button>
+    <button class="btn btn-green" id="uploadCloudinaryBtn">1. Upload Processed Photos to Cloudinary</button>
     <div id="statusText" class="status-text"></div>
   </div>
 
-  <div id="jsonResultSection">
-    <div class="section-heading" style="text-align:left; color:#10b981;">AI Extracted JSON Result:</div>
+  <!-- Step 1 Result: Cloudinary URLs -->
+  <div id="urlListSection" class="card-box">
+    <span class="badge">✔ Cloudinary Upload Complete!</span>
+    <div style="font-weight:bold; margin-bottom:10px;">Generated Image URLs:</div>
+    <pre id="urlDisplay"></pre>
+  </div>
+
+  <!-- Step 2 Box: Upload Data Images for Gemini AI -->
+  <div id="aiExtractSection" class="card-box" style="border: 2px solid #8b5cf6;">
+    <div style="font-weight:bold; font-size:16px; margin-bottom:10px; color:#8b5cf6;">STEP 2: Extract Data with Gemini AI</div>
+    <p style="font-size:13px; color:#666; margin-bottom:15px;">Now select the original property detail images/screenshots to extract JSON data.</p>
+    
+    <div class="control-group">
+      <label>Select Original/Raw Detail Images:</label>
+      <input type="file" id="dataImagesInput" multiple accept="image/*">
+    </div>
+
+    <button class="btn btn-purple" id="extractJsonBtn">2. Extract Property JSON with Gemini AI</button>
+    <div id="aiStatusText" class="status-text"></div>
+  </div>
+
+  <!-- Final JSON Result Box -->
+  <div id="jsonResultSection" class="card-box">
+    <div class="section-heading" style="text-align:left; color:#10b981;">Final AI Extracted JSON:</div>
     <pre id="jsonDisplay"></pre>
     <button class="btn btn-purple" id="copyJsonBtn">Copy JSON Code</button>
   </div>
@@ -255,8 +286,17 @@
     
     const processedSection = document.getElementById('processedSection');
     const processedGrid = document.getElementById('processedGrid');
-    const getAllUrlsBtn = document.getElementById('getAllUrlsBtn');
+    const uploadCloudinaryBtn = document.getElementById('uploadCloudinaryBtn');
     const statusText = document.getElementById('statusText');
+    
+    const urlListSection = document.getElementById('urlListSection');
+    const urlDisplay = document.getElementById('urlDisplay');
+    
+    const aiExtractSection = document.getElementById('aiExtractSection');
+    const dataImagesInput = document.getElementById('dataImagesInput');
+    const extractJsonBtn = document.getElementById('extractJsonBtn');
+    const aiStatusText = document.getElementById('aiStatusText');
+    
     const jsonResultSection = document.getElementById('jsonResultSection');
     const jsonDisplay = document.getElementById('jsonDisplay');
     const copyJsonBtn = document.getElementById('copyJsonBtn');
@@ -264,6 +304,7 @@
     let cropperInstances = [];
     let wmPositions = [];
     let processedBlobs = [];
+    let uploadedCloudinaryUrls = [];
 
     const readFileAsDataURL = (file) => {
       return new Promise((resolve) => {
@@ -280,6 +321,8 @@
       processedBlobs = [];
       gallery.innerHTML = '';
       processedSection.style.display = 'none';
+      urlListSection.style.display = 'none';
+      aiExtractSection.style.display = 'none';
       jsonResultSection.style.display = 'none';
       processedGrid.innerHTML = '';
       statusText.innerText = '';
@@ -444,6 +487,8 @@
 
       processedGrid.innerHTML = '';
       processedBlobs = [];
+      urlListSection.style.display = 'none';
+      aiExtractSection.style.display = 'none';
       jsonResultSection.style.display = 'none';
       statusText.innerText = '';
 
@@ -458,7 +503,6 @@
 
         const card = document.createElement('div');
         card.className = 'processed-card';
-        card.setAttribute('data-blob-index', currentSerial - 1);
         card.innerHTML = `
           <div class="card-number">#${currentSerial}</div>
           <button class="remove-btn" title="Remove Photo">✕</button>
@@ -487,13 +531,13 @@
       }
     });
 
-    getAllUrlsBtn.addEventListener('click', async () => {
-      if (processedBlobs.length === 0) return alert('No photos to process!');
+    // STEP 1: Upload Edited Images to Cloudinary only
+    uploadCloudinaryBtn.addEventListener('click', async () => {
+      if (processedBlobs.length === 0) return alert('No processed photos to upload!');
 
-      getAllUrlsBtn.disabled = true;
-      getAllUrlsBtn.innerText = 'Processing Images & Extracting AI Data...';
-      statusText.innerText = 'Uploading to Cloudinary & Running AI Extraction...';
-      jsonResultSection.style.display = 'none';
+      uploadCloudinaryBtn.disabled = true;
+      uploadCloudinaryBtn.innerText = 'Uploading to Cloudinary...';
+      statusText.innerText = 'Uploading images to Cloudinary...';
 
       const formData = new FormData();
       processedBlobs.forEach((blob, i) => {
@@ -502,7 +546,55 @@
       });
 
       try {
-        const res = await fetch('/api/upload-multiple', {
+        const res = await fetch('/api/upload-cloudinary', {
+          method: 'POST',
+          body: formData
+        });
+
+        const resData = await res.json();
+
+        if (resData.success && resData.urls) {
+          uploadedCloudinaryUrls = resData.urls;
+          urlDisplay.innerText = JSON.stringify(uploadedCloudinaryUrls, null, 2);
+          
+          urlListSection.style.display = 'block';
+          aiExtractSection.style.display = 'block';
+          
+          statusText.innerText = 'Cloudinary Upload Successful!';
+          aiExtractSection.scrollIntoView({ behavior: 'smooth' });
+        } else {
+          alert(`Upload Failed: ${resData.error || 'Unknown error'}`);
+          statusText.innerText = 'Upload Failed!';
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Cloudinary Upload Error!');
+        statusText.innerText = 'Upload Failed!';
+      } finally {
+        uploadCloudinaryBtn.disabled = false;
+        uploadCloudinaryBtn.innerText = '1. Upload Processed Photos to Cloudinary';
+      }
+    });
+
+    // STEP 2: Send Raw Photos + Cloudinary URLs to Gemini AI
+    extractJsonBtn.addEventListener('click', async () => {
+      const dataFiles = dataImagesInput.files;
+      if (!dataFiles || dataFiles.length === 0) {
+        return alert('Please select raw detail photos to extract data!');
+      }
+
+      extractJsonBtn.disabled = true;
+      extractJsonBtn.innerText = 'Gemini AI Extracting Data...';
+      aiStatusText.innerText = 'Reading images & generating JSON...';
+
+      const formData = new FormData();
+      for (let i = 0; i < dataFiles.length; i++) {
+        formData.append('data_images', dataFiles[i]);
+      }
+      formData.append('cloudinary_urls', JSON.stringify(uploadedCloudinaryUrls));
+
+      try {
+        const res = await fetch('/api/extract-json', {
           method: 'POST',
           body: formData
         });
@@ -512,19 +604,19 @@
         if (resData.success && resData.data) {
           jsonDisplay.innerText = JSON.stringify(resData.data, null, 2);
           jsonResultSection.style.display = 'block';
-          statusText.innerText = 'Success! Cloudinary Upload & AI Extraction Complete!';
+          aiStatusText.innerText = 'JSON Extraction Complete!';
           jsonResultSection.scrollIntoView({ behavior: 'smooth' });
         } else {
-          alert(`Failed: ${resData.error || 'Unknown error'}`);
-          statusText.innerText = 'Process Failed!';
+          alert(`Extraction Failed: ${resData.error || 'Unknown error'}`);
+          aiStatusText.innerText = 'Extraction Failed!';
         }
       } catch (err) {
         console.error(err);
-        alert('Upload/Extraction Error!');
-        statusText.innerText = 'Failed!';
+        alert('AI Extraction Error!');
+        aiStatusText.innerText = 'Extraction Failed!';
       } finally {
-        getAllUrlsBtn.disabled = false;
-        getAllUrlsBtn.innerText = 'Upload to Cloudinary & Extract JSON';
+     extractJsonBtn.disabled = false;
+        extractJsonBtn.innerText = '2. Extract Property JSON with Gemini AI';
       }
     });
 
@@ -541,5 +633,4 @@
     });
   </script>
 </body>
-        </html>
-
+</html>
