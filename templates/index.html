@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crop, Watermark & AI Property Extractor</title>
+  
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+  
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 15px;
+      background-color: #f0f2f5;
+      max-width: 800px;
+      margin: 0 auto;
+      color: #333;
+    }
+    h2 { text-align: center; margin-bottom: 20px; }
+    .controls {
+      background: #ffffff;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      margin-bottom: 25px;
+    }
+    .control-group { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; }
+    input[type="text"], input[type="file"] {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+    input[type="range"] { width: 100%; cursor: pointer; }
+    
+    .btn {
+      width: 100%;
+      background-color: #0066fe;
+      color: white;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 16px;
+      margin-top: 10px;
+    }
+    .btn:hover { background-color: #0052cc; }
+    .btn-green { background-color: #10b981; }
+    .btn-green:hover { background-color: #059669; }
+    .btn-purple { background-color: #8b5cf6; margin-top: 15px; }
+    .btn-purple:hover { background-color: #7c3aed; }
+
+    #gallery {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 30px;
+    }
+    
+    .editor-card {
+      background: #fff;
+      padding: 15px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 340px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .card-title {
+      font-weight: bold;
+      margin-bottom: 10px;
+      font-size: 14px;
+      color: #0066fe;
+      text-align: center;
+    }
+    .crop-container {
+      width: 100%;
+      max-width: 280px;
+      background: #e2e8f0;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .crop-container img { max-width: 100%; display: block; }
+
+    .preview-container {
+      position: relative;
+      width: 100%;
+      max-width: 280px;
+      margin-top: 15px;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #e5e7eb;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      touch-action: pan-y;
+    }
+    .preview-container canvas { display: block; width: 100%; height: auto; pointer-events: none; }
+    
+    .watermark-overlay {
+      position: absolute;
+      color: white;
+      text-shadow: 0px 0px 4px rgba(0,0,0,0.8);
+      cursor: move;
+      user-select: none;
+      white-space: nowrap;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      touch-action: none;
+    }
+
+    #processedSection {
+      margin-top: 30px;
+      display: none;
+    }
+    .section-heading {
+      font-size: 18px;
+      font-weight: bold;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+    .processed-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .processed-card {
+      background: #fff;
+      padding: 8px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+    }
+    .card-number {
+      font-size: 12px;
+      font-weight: bold;
+      color: #0066fe;
+      margin-bottom: 4px;
+    }
+    .remove-btn {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      background: #ef4444;
+      color: white;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: bold;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      z-index: 10;
+    }
+    .remove-btn:hover { background: #dc2626; }
+    
+    .processed-img {
+      width: 100%;
+      height: 110px;
+      object-fit: contain;
+      border-radius: 4px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+    }
+
+    #jsonResultSection {
+      margin-top: 30px;
+      background: #fff;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      display: none;
+    }
+    pre {
+      background: #0d1117;
+      color: #7ee787;
+      padding: 15px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 13px;
+    }
+    .status-text {
+      text-align: center;
+      font-weight: bold;
+      color: #0066fe;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Crop, Watermark & AI Property Extractor</h2>
+
+  <div class="controls">
+    <div class="control-group">
+      <label>1. Select Photos:</label>
+      <input type="file" id="imageInput" multiple accept="image/*">
+    </div>
+
+    <div class="control-group">
+      <label>2. Watermark Text:</label>
+      <input type="text" id="wmText" value="EstateX" placeholder="Enter text...">
+    </div>
+
+    <div class="control-group">
+      <label>3. Text Size:</label>
+      <input type="range" id="wmSize" min="10" max="100" value="30">
+    </div>
+
+    <div class="control-group">
+      <label>4. Opacity:</label>
+      <input type="range" id="wmOpacity" min="0.1" max="1" step="0.05" value="0.7">
+    </div>
+
+    <button class="btn" id="generateBtn">Apply Settings & Preview Photos</button>
+  </div>
+
+  <div id="gallery"></div>
+
+  <div id="processedSection">
+    <div class="section-heading">Processed Photos Preview</div>
+    <div class="processed-grid" id="processedGrid"></div>
+    
+    <button class="btn btn-green" id="getAllUrlsBtn">Upload to Cloudinary & Extract JSON</button>
+    <div id="statusText" class="status-text"></div>
+  </div>
+
+  <div id="jsonResultSection">
+    <div class="section-heading" style="text-align:left; color:#10b981;">AI Extracted JSON Result:</div>
+    <pre id="jsonDisplay"></pre>
+    <button class="btn btn-purple" id="copyJsonBtn">Copy JSON Code</button>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+
+  <script>
+    const imageInput = document.getElementById('imageInput');
+    const wmText = document.getElementById('wmText');
+    const wmSize = document.getElementById('wmSize');
+    const wmOpacity = document.getElementById('wmOpacity');
+    const generateBtn = document.getElementById('generateBtn');
+    const gallery = document.getElementById('gallery');
+    
+    const processedSection = document.getElementById('processedSection');
+    const processedGrid = document.getElementById('processedGrid');
+    const getAllUrlsBtn = document.getElementById('getAllUrlsBtn');
+    const statusText = document.getElementById('statusText');
+    const jsonResultSection = document.getElementById('jsonResultSection');
+    const jsonDisplay = document.getElementById('jsonDisplay');
+    const copyJsonBtn = document.getElementById('copyJsonBtn');
+
+    let cropperInstances = [];
+    let wmPositions = [];
+    let processedBlobs = [];
+
+    const readFileAsDataURL = (file) => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.readAsDataURL(file);
+      });
+    };
+
+    imageInput.addEventListener('change', async (e) => {
+      cropperInstances.forEach(inst => inst && inst.destroy());
+      cropperInstances = [];
+      wmPositions = [];
+      processedBlobs = [];
+      gallery.innerHTML = '';
+      processedSection.style.display = 'none';
+      jsonResultSection.style.display = 'none';
+      processedGrid.innerHTML = '';
+      statusText.innerText = '';
+
+      let files = Array.from(e.target.files);
+      if (files.length === 0) return;
+
+      files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
+      for (let i = 0; i < files.length; i++) {
+        const imgSrc = await readFileAsDataURL(files[i]);
+        wmPositions[i] = { x: 0.5, y: 0.5 };
+        buildCard(i, imgSrc);
+      }
+    });
+
+    function buildCard(index, imgSrc) {
+      const card = document.createElement('div');
+      card.className = 'editor-card';
+
+      card.innerHTML = `
+        <div class="card-title">Photo #${index + 1} - Adjust Crop Area</div>
+        <div class="crop-container">
+          <img id="crop-img-${index}" src="${imgSrc}">
+        </div>
+        
+        <div class="card-title" style="margin-top:15px; color:#10b981;">Watermark Position</div>
+        <div class="preview-container" id="wrapper-${index}"></div>
+      `;
+
+      gallery.appendChild(card);
+
+      const imageEl = document.getElementById(`crop-img-${index}`);
+      
+      const cropper = new Cropper(imageEl, {
+        viewMode: 1,
+        autoCropArea: 0.85,
+        background: false,
+        zoomable: false,
+        movable: false,
+        rotatable: false,
+        scalable: false,
+        cropend() { renderPreview(index); },
+        ready() { renderPreview(index); }
+      });
+
+      cropperInstances[index] = cropper;
+    }
+
+    function renderPreview(index) {
+      const wrapper = document.getElementById(`wrapper-${index}`);
+      if (!wrapper) return;
+      wrapper.innerHTML = '';
+
+      const cropper = cropperInstances[index];
+      if (!cropper) return;
+
+      const croppedCanvas = cropper.getCroppedCanvas();
+      if (!croppedCanvas) return;
+
+      const previewCanvas = document.createElement('canvas');
+      const ctx = previewCanvas.getContext('2d');
+      
+      const maxDisplayWidth = 280;
+      const scale = Math.min(1, maxDisplayWidth / croppedCanvas.width);
+      previewCanvas.width = croppedCanvas.width * scale;
+      previewCanvas.height = croppedCanvas.height * scale;
+
+      ctx.drawImage(croppedCanvas, 0, 0, previewCanvas.width, previewCanvas.height);
+      wrapper.appendChild(previewCanvas);
+
+      const overlay = document.createElement('div');
+      overlay.className = 'watermark-overlay';
+      overlay.innerText = wmText.value;
+      overlay.style.fontSize = `${wmSize.value * scale}px`;
+      overlay.style.opacity = wmOpacity.value;
+      
+      overlay.style.left = `${wmPositions[index].x * 100}%`;
+      overlay.style.top = `${wmPositions[index].y * 100}%`;
+
+      wrapper.appendChild(overlay);
+
+      let isWMDragging = false;
+
+      const onWMMove = (e) => {
+        if (!isWMDragging) return;
+        const rect = wrapper.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+        let x = (clientX - rect.left) / rect.width;
+        let y = (clientY - rect.top) / rect.height;
+
+        x = Math.max(0, Math.min(1, x));
+        y = Math.max(0, Math.min(1, y));
+
+        wmPositions[index] = { x, y };
+        overlay.style.left = `${x * 100}%`;
+        overlay.style.top = `${y * 100}%`;
+      };
+
+      const startWMDrag = (e) => { 
+        isWMDragging = true; 
+        e.stopPropagation();
+      };
+      const stopWMDrag = () => { isWMDragging = false; };
+
+      overlay.addEventListener('mousedown', startWMDrag);
+      overlay.addEventListener('touchstart', startWMDrag, { passive: true });
+
+      window.addEventListener('mousemove', onWMMove);
+      window.addEventListener('touchmove', onWMMove, { passive: true });
+
+      window.addEventListener('mouseup', stopWMDrag);
+      window.addEventListener('touchend', stopWMDrag);
+    }
+
+    function updateWatermarkPreviews() {
+      requestAnimationFrame(() => {
+        cropperInstances.forEach((_, index) => renderPreview(index));
+      });
+    }
+
+    wmText.addEventListener('input', updateWatermarkPreviews);
+    wmSize.addEventListener('input', updateWatermarkPreviews);
+    wmOpacity.addEventListener('input', updateWatermarkPreviews);
+
+    function getFinalImageBlob(index) {
+      return new Promise((resolve) => {
+        const cropper = cropperInstances[index];
+        if (!cropper) return resolve(null);
+        
+        const srcCanvas = cropper.getCroppedCanvas();
+        if (!srcCanvas) return resolve(null);
+
+        const outCanvas = document.createElement('canvas');
+        const ctx = outCanvas.getContext('2d');
+
+        outCanvas.width = srcCanvas.width;
+        outCanvas.height = srcCanvas.height;
+
+        ctx.drawImage(srcCanvas, 0, 0);
+
+        const pos = wmPositions[index];
+        const fontSize = parseInt(wmSize.value, 10) * (srcCanvas.width / 280);
+        
+        ctx.font = `bold ${fontSize}px sans-serif`;
+        ctx.fillStyle = `rgba(255, 255, 255, ${wmOpacity.value})`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+        ctx.shadowBlur = fontSize * 0.1;
+
+        ctx.fillText(wmText.value, pos.x * outCanvas.width, pos.y * outCanvas.height);
+
+        outCanvas.toBlob((blob) => resolve(blob), 'image/png');
+      });
+    }
+
+    generateBtn.addEventListener('click', async () => {
+      if (cropperInstances.length === 0) return alert('Please select photos first!');
+
+      processedGrid.innerHTML = '';
+      processedBlobs = [];
+      jsonResultSection.style.display = 'none';
+      statusText.innerText = '';
+
+      for (let index = 0; index < cropperInstances.length; index++) {
+        if (!cropperInstances[index]) continue;
+        
+        const blob = await getFinalImageBlob(index);
+        if (!blob) continue;
+
+        processedBlobs.push(blob);
+        const currentSerial = processedBlobs.length;
+
+        const card = document.createElement('div');
+        card.className = 'processed-card';
+        card.setAttribute('data-blob-index', currentSerial - 1);
+        card.innerHTML = `
+          <div class="card-number">#${currentSerial}</div>
+          <button class="remove-btn" title="Remove Photo">✕</button>
+          <img class="processed-img" src="${URL.createObjectURL(blob)}">
+        `;
+
+        const removeBtn = card.querySelector('.remove-btn');
+        removeBtn.addEventListener('click', () => {
+          const blobIndex = processedBlobs.indexOf(blob);
+          if (blobIndex > -1) {
+            processedBlobs.splice(blobIndex, 1);
+          }
+          card.remove();
+
+          if (processedBlobs.length === 0) {
+            processedSection.style.display = 'none';
+          }
+        });
+
+        processedGrid.appendChild(card);
+      }
+      
+      if (processedBlobs.length > 0) {
+        processedSection.style.display = 'block';
+        processedSection.scrollIntoView({ behavior: 'smooth' });
+      }
+    });
+
+    getAllUrlsBtn.addEventListener('click', async () => {
+      if (processedBlobs.length === 0) return alert('No photos to process!');
+
+      getAllUrlsBtn.disabled = true;
+      getAllUrlsBtn.innerText = 'Processing Images & Extracting AI Data...';
+      statusText.innerText = 'Uploading to Cloudinary & Running AI Extraction...';
+      jsonResultSection.style.display = 'none';
+
+      const formData = new FormData();
+      processedBlobs.forEach((blob, i) => {
+        const serialName = `photo_${String(i + 1).padStart(3, '0')}.png`;
+        formData.append('images', blob, serialName);
+      });
+
+      try {
+        const res = await fetch('/api/upload-multiple', {
+          method: 'POST',
+          body: formData
+        });
+
+        const resData = await res.json();
+
+        if (resData.success && resData.data) {
+          jsonDisplay.innerText = JSON.stringify(resData.data, null, 2);
+          jsonResultSection.style.display = 'block';
+          statusText.innerText = 'Success! Cloudinary Upload & AI Extraction Complete!';
+          jsonResultSection.scrollIntoView({ behavior: 'smooth' });
+        } else {
+          alert(`Failed: ${resData.error || 'Unknown error'}`);
+          statusText.innerText = 'Process Failed!';
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Upload/Extraction Error!');
+        statusText.innerText = 'Failed!';
+      } finally {
+        getAllUrlsBtn.disabled = false;
+        getAllUrlsBtn.innerText = 'Upload to Cloudinary & Extract JSON';
+      }
+    });
+
+    copyJsonBtn.addEventListener('click', () => {
+      const text = jsonDisplay.innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        copyJsonBtn.innerText = 'JSON Copied!';
+        copyJsonBtn.style.background = '#10b981';
+        setTimeout(() => {
+          copyJsonBtn.innerText = 'Copy JSON Code';
+          copyJsonBtn.style.background = '#8b5cf6';
+        }, 2000);
+      });
+    });
+  </script>
+</body>
+        </html>
+
