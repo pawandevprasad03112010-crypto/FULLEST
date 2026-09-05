@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Property Tool - Crop, Watermark & AI Extractor</title>
+  <title>Crop & Watermark Tool</title>
   
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
   
@@ -12,32 +12,68 @@
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       padding: 15px;
-      background-color: #f0f2f5;
-      max-width: 800px;
+      background-color: #f4f6f8;
+      max-width: 600px;
       margin: 0 auto;
       color: #333;
     }
-    h2 { text-align: center; margin-bottom: 20px; color: #1e293b; }
+    
     .card-box {
       background: #ffffff;
       padding: 20px;
       border-radius: 12px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-      margin-bottom: 25px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+      margin-bottom: 20px;
     }
+
+    .main-title {
+      font-size: 20px;
+      font-weight: bold;
+      text-align: center;
+      margin-bottom: 15px;
+      color: #111827;
+    }
+
     .control-group { margin-bottom: 15px; }
-    label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; }
+    label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; color: #374151; }
     input[type="text"], input[type="file"] {
       width: 100%;
       padding: 10px;
-      border: 1px solid #ccc;
-      border-radius: 6px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      background: #fff;
     }
     input[type="range"] { width: 100%; cursor: pointer; }
-    
-    .btn {
+
+    .btn-blue {
       width: 100%;
-      background-color: #0066fe;
+      background-color: #2563eb;
+      color: white;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 16px;
+    }
+    .btn-blue:hover { background-color: #1d4ed8; }
+
+    .btn-green {
+      width: 100%;
+      background-color: #10b981;
+      color: white;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 16px;
+    }
+    .btn-green:hover { background-color: #059669; }
+
+    .btn-purple {
+      width: 100%;
+      background-color: #8b5cf6;
       color: white;
       padding: 14px;
       border: none;
@@ -47,41 +83,32 @@
       font-size: 16px;
       margin-top: 10px;
     }
-    .btn:hover { background-color: #0052cc; }
-    .btn-green { background-color: #10b981; }
-    .btn-green:hover { background-color: #059669; }
-    .btn-purple { background-color: #8b5cf6; margin-top: 15px; }
     .btn-purple:hover { background-color: #7c3aed; }
 
     #gallery {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 30px;
+      gap: 20px;
     }
-    
+
     .editor-card {
       background: #fff;
       padding: 15px;
       border-radius: 12px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.08);
       width: 100%;
-      max-width: 340px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
     }
     .card-title {
       font-weight: bold;
       margin-bottom: 10px;
-      font-size: 14px;
-      color: #0066fe;
+      font-size: 15px;
+      color: #2563eb;
       text-align: center;
     }
     .crop-container {
       width: 100%;
-      max-width: 280px;
-      background: #e2e8f0;
+      background: #e5e7eb;
       border-radius: 8px;
       overflow: hidden;
     }
@@ -90,16 +117,14 @@
     .preview-container {
       position: relative;
       width: 100%;
-      max-width: 280px;
-      margin-top: 15px;
+      margin-top: 10px;
       border-radius: 8px;
       overflow: hidden;
       background: #e5e7eb;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
       touch-action: pan-y;
     }
     .preview-container canvas { display: block; width: 100%; height: auto; pointer-events: none; }
-    
+
     .watermark-overlay {
       position: absolute;
       color: white;
@@ -114,35 +139,34 @@
     }
 
     #processedSection {
-      margin-top: 30px;
       display: none;
+      margin-top: 20px;
     }
-    .section-heading {
+    .processed-heading {
       font-size: 18px;
       font-weight: bold;
-      margin-bottom: 15px;
       text-align: center;
+      margin-bottom: 15px;
     }
     .processed-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      display: flex;
       gap: 12px;
-      margin-bottom: 20px;
+      justify-content: center;
+      margin-bottom: 15px;
     }
     .processed-card {
       background: #fff;
-      padding: 8px;
+      padding: 6px;
       border-radius: 8px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
+      border: 1px solid #e5e7eb;
       position: relative;
+      width: 120px;
+      text-align: center;
     }
     .card-number {
-      font-size: 12px;
+      font-size: 13px;
       font-weight: bold;
-      color: #0066fe;
+      color: #2563eb;
       margin-bottom: 4px;
     }
     .remove-btn {
@@ -153,35 +177,68 @@
       color: white;
       border: 2px solid #fff;
       border-radius: 50%;
-      width: 24px;
-      height: 24px;
+      width: 22px;
+      height: 22px;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: bold;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-      z-index: 10;
     }
-    
     .processed-img {
       width: 100%;
-      height: 110px;
-      object-fit: contain;
+      height: 90px;
+      object-fit: cover;
       border-radius: 4px;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
     }
 
-    .status-text {
+    .status-msg {
       text-align: center;
       font-weight: bold;
-      color: #0066fe;
+      color: #2563eb;
       margin-top: 10px;
+      font-size: 15px;
     }
 
-    #urlListSection, #aiExtractSection, #jsonResultSection {
+    /* Video Style Cloudinary URL Box */
+    #urlListSection {
+      display: none;
+      margin-top: 15px;
+    }
+    .url-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .url-serial {
+      font-weight: bold;
+      color: #2563eb;
+      font-size: 14px;
+      width: 25px;
+    }
+    .url-input {
+      flex: 1;
+      padding: 8px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      background: #f9fafb;
+      font-size: 13px;
+      color: #374151;
+    }
+    .copy-single-btn {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    #aiExtractSection, #jsonResultSection {
       display: none;
     }
 
@@ -192,35 +249,23 @@
       border-radius: 8px;
       overflow-x: auto;
       font-size: 13px;
-    }
-
-    .badge {
-      background: #dcfce7;
-      color: #166534;
-      padding: 6px 12px;
-      border-radius: 20px;
-      font-size: 13px;
-      display: inline-block;
-      margin-bottom: 10px;
+      margin-top: 10px;
     }
   </style>
 </head>
 <body>
 
-  <h2>Property Listing Automation</h2>
-
-  <!-- Step 1 Box -->
   <div class="card-box">
-    <div style="font-weight:bold; font-size:16px; margin-bottom:15px; color:#0066fe;">STEP 1: Crop & Watermark Image Photos</div>
+    <div class="main-title">Crop & Watermark Tool</div>
     
     <div class="control-group">
-      <label>1. Select Photos for Cropping/Watermark:</label>
+      <label>1. Select Photos:</label>
       <input type="file" id="imageInput" multiple accept="image/*">
     </div>
 
     <div class="control-group">
       <label>2. Watermark Text:</label>
-      <input type="text" id="wmText" value="EstateX" placeholder="Enter text...">
+      <input type="text" id="wmText" value="EstateX">
     </div>
 
     <div class="control-group">
@@ -233,45 +278,43 @@
       <input type="range" id="wmOpacity" min="0.1" max="1" step="0.05" value="0.7">
     </div>
 
-    <button class="btn" id="generateBtn">Apply Settings & Preview Photos</button>
+    <button class="btn-blue" id="generateBtn">Apply Settings & Preview Photos</button>
   </div>
 
   <div id="gallery"></div>
 
   <div id="processedSection">
-    <div class="section-heading">Processed Photos Preview</div>
+    <div class="processed-heading">Processed Photos Preview</div>
     <div class="processed-grid" id="processedGrid"></div>
     
-    <button class="btn btn-green" id="uploadCloudinaryBtn">1. Upload Processed Photos to Cloudinary</button>
-    <div id="statusText" class="status-text"></div>
+    <button class="btn-green" id="getCloudinaryUrlsBtn">Get All Cloudinary URLs</button>
+    <div id="statusMsg" class="status-msg"></div>
+
+    <div id="urlListSection">
+      <div style="font-weight:bold; margin-bottom:10px; font-size:14px; color:#374151;">Generated Cloudinary URLs:</div>
+      <div id="urlRowsContainer"></div>
+      
+      <button class="btn-purple" id="copyAllUrlsBtn">Copy All URLs</button>
+    </div>
   </div>
 
-  <!-- Step 1 Result: Cloudinary URLs -->
-  <div id="urlListSection" class="card-box">
-    <span class="badge">✔ Cloudinary Upload Complete!</span>
-    <div style="font-weight:bold; margin-bottom:10px;">Generated Image URLs:</div>
-    <pre id="urlDisplay"></pre>
-  </div>
-
-  <!-- Step 2 Box: Upload Data Images for Gemini AI -->
-  <div id="aiExtractSection" class="card-box" style="border: 2px solid #8b5cf6;">
-    <div style="font-weight:bold; font-size:16px; margin-bottom:10px; color:#8b5cf6;">STEP 2: Extract Data with Gemini AI</div>
-    <p style="font-size:13px; color:#666; margin-bottom:15px;">Now select the original property detail images/screenshots to extract JSON data.</p>
+  <div id="aiExtractSection" class="card-box" style="border: 2px solid #8b5cf6; margin-top:25px;">
+    <div class="main-title" style="color:#8b5cf6;">Step 2: Gemini AI Data Extraction</div>
+    <p style="font-size:13px; color:#6b7280; margin-bottom:15px; text-align:center;">Ab Property ki Detail/Raw Screenshots upload karein Gemini AI se JSON extract karne ke liye.</p>
     
     <div class="control-group">
-      <label>Select Original/Raw Detail Images:</label>
+      <label>Select Original / Raw Property Detail Photos:</label>
       <input type="file" id="dataImagesInput" multiple accept="image/*">
     </div>
 
-    <button class="btn btn-purple" id="extractJsonBtn">2. Extract Property JSON with Gemini AI</button>
-    <div id="aiStatusText" class="status-text"></div>
+    <button class="btn-purple" id="extractJsonBtn">Extract Property JSON with Gemini AI</button>
+    <div id="aiStatusMsg" class="status-msg"></div>
   </div>
 
-  <!-- Final JSON Result Box -->
   <div id="jsonResultSection" class="card-box">
-    <div class="section-heading" style="text-align:left; color:#10b981;">Final AI Extracted JSON:</div>
+    <div class="main-title" style="color:#10b981; text-align:left;">AI Extracted JSON Result:</div>
     <pre id="jsonDisplay"></pre>
-    <button class="btn btn-purple" id="copyJsonBtn">Copy JSON Code</button>
+    <button class="btn-green" id="copyJsonBtn" style="margin-top:10px;">Copy JSON Code</button>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
@@ -286,16 +329,17 @@
     
     const processedSection = document.getElementById('processedSection');
     const processedGrid = document.getElementById('processedGrid');
-    const uploadCloudinaryBtn = document.getElementById('uploadCloudinaryBtn');
-    const statusText = document.getElementById('statusText');
+    const getCloudinaryUrlsBtn = document.getElementById('getCloudinaryUrlsBtn');
+    const statusMsg = document.getElementById('statusMsg');
     
     const urlListSection = document.getElementById('urlListSection');
-    const urlDisplay = document.getElementById('urlDisplay');
+    const urlRowsContainer = document.getElementById('urlRowsContainer');
+    const copyAllUrlsBtn = document.getElementById('copyAllUrlsBtn');
     
     const aiExtractSection = document.getElementById('aiExtractSection');
     const dataImagesInput = document.getElementById('dataImagesInput');
     const extractJsonBtn = document.getElementById('extractJsonBtn');
-    const aiStatusText = document.getElementById('aiStatusText');
+    const aiStatusMsg = document.getElementById('aiStatusMsg');
     
     const jsonResultSection = document.getElementById('jsonResultSection');
     const jsonDisplay = document.getElementById('jsonDisplay');
@@ -325,7 +369,7 @@
       aiExtractSection.style.display = 'none';
       jsonResultSection.style.display = 'none';
       processedGrid.innerHTML = '';
-      statusText.innerText = '';
+      statusMsg.innerText = '';
 
       let files = Array.from(e.target.files);
       if (files.length === 0) return;
@@ -349,7 +393,7 @@
           <img id="crop-img-${index}" src="${imgSrc}">
         </div>
         
-        <div class="card-title" style="margin-top:15px; color:#10b981;">Watermark Position</div>
+        <div class="card-title" style="margin-top:12px; color:#10b981;">Watermark Position</div>
         <div class="preview-container" id="wrapper-${index}"></div>
       `;
 
@@ -490,7 +534,7 @@
       urlListSection.style.display = 'none';
       aiExtractSection.style.display = 'none';
       jsonResultSection.style.display = 'none';
-      statusText.innerText = '';
+      statusMsg.innerText = '';
 
       for (let index = 0; index < cropperInstances.length; index++) {
         if (!cropperInstances[index]) continue;
@@ -531,13 +575,13 @@
       }
     });
 
-    // STEP 1: Upload Edited Images to Cloudinary only
-    uploadCloudinaryBtn.addEventListener('click', async () => {
+    // STEP 1: Upload Edited Images to Cloudinary
+    getCloudinaryUrlsBtn.addEventListener('click', async () => {
       if (processedBlobs.length === 0) return alert('No processed photos to upload!');
 
-      uploadCloudinaryBtn.disabled = true;
-      uploadCloudinaryBtn.innerText = 'Uploading to Cloudinary...';
-      statusText.innerText = 'Uploading images to Cloudinary...';
+      getCloudinaryUrlsBtn.disabled = true;
+      getCloudinaryUrlsBtn.innerText = 'Uploading to Cloudinary...';
+      statusMsg.innerText = 'Uploading to Cloudinary...';
 
       const formData = new FormData();
       processedBlobs.forEach((blob, i) => {
@@ -555,37 +599,74 @@
 
         if (resData.success && resData.urls) {
           uploadedCloudinaryUrls = resData.urls;
-          urlDisplay.innerText = JSON.stringify(uploadedCloudinaryUrls, null, 2);
           
+          // Build Video-Style URL list with copy buttons
+          urlRowsContainer.innerHTML = '';
+          uploadedCloudinaryUrls.forEach((url, i) => {
+            const row = document.createElement('div');
+            row.className = 'url-row';
+            row.innerHTML = `
+              <div class="url-serial">#${i + 1}</div>
+              <input type="text" class="url-input" value="${url}" readonly>
+              <button class="copy-single-btn">Copy</button>
+            `;
+
+            const singleCopyBtn = row.querySelector('.copy-single-btn');
+            singleCopyBtn.addEventListener('click', () => {
+              navigator.clipboard.writeText(url);
+              singleCopyBtn.innerText = 'Copied!';
+              singleCopyBtn.style.background = '#10b981';
+              setTimeout(() => {
+                singleCopyBtn.innerText = 'Copy';
+                singleCopyBtn.style.background = '#2563eb';
+              }, 2000);
+            });
+
+            urlRowsContainer.appendChild(row);
+          });
+
+          statusMsg.innerText = 'All URLs Generated Successfully!';
           urlListSection.style.display = 'block';
           aiExtractSection.style.display = 'block';
-          
-          statusText.innerText = 'Cloudinary Upload Successful!';
+
           aiExtractSection.scrollIntoView({ behavior: 'smooth' });
         } else {
           alert(`Upload Failed: ${resData.error || 'Unknown error'}`);
-          statusText.innerText = 'Upload Failed!';
+          statusMsg.innerText = 'Upload Failed!';
         }
       } catch (err) {
         console.error(err);
         alert('Cloudinary Upload Error!');
-        statusText.innerText = 'Upload Failed!';
+        statusMsg.innerText = 'Upload Failed!';
       } finally {
-        uploadCloudinaryBtn.disabled = false;
-        uploadCloudinaryBtn.innerText = '1. Upload Processed Photos to Cloudinary';
+        getCloudinaryUrlsBtn.disabled = false;
+        getCloudinaryUrlsBtn.innerText = 'Get All Cloudinary URLs';
       }
     });
 
-    // STEP 2: Send Raw Photos + Cloudinary URLs to Gemini AI
+    copyAllUrlsBtn.addEventListener('click', () => {
+      if (uploadedCloudinaryUrls.length === 0) return;
+      const allText = uploadedCloudinaryUrls.join('\n');
+      navigator.clipboard.writeText(allText).then(() => {
+        copyAllUrlsBtn.innerText = 'All URLs Copied!';
+        copyAllUrlsBtn.style.background = '#10b981';
+        setTimeout(() => {
+          copyAllUrlsBtn.innerText = 'Copy All URLs';
+          copyAllUrlsBtn.style.background = '#8b5cf6';
+        }, 2000);
+      });
+    });
+
+    // STEP 2: Extract Data with Gemini AI using Raw Photos + Cloudinary URLs
     extractJsonBtn.addEventListener('click', async () => {
       const dataFiles = dataImagesInput.files;
       if (!dataFiles || dataFiles.length === 0) {
-        return alert('Please select raw detail photos to extract data!');
+        return alert('Please select raw detail photos for Gemini AI!');
       }
 
       extractJsonBtn.disabled = true;
       extractJsonBtn.innerText = 'Gemini AI Extracting Data...';
-      aiStatusText.innerText = 'Reading images & generating JSON...';
+      aiStatusMsg.innerText = 'Reading raw photos & generating JSON...';
 
       const formData = new FormData();
       for (let i = 0; i < dataFiles.length; i++) {
@@ -604,19 +685,19 @@
         if (resData.success && resData.data) {
           jsonDisplay.innerText = JSON.stringify(resData.data, null, 2);
           jsonResultSection.style.display = 'block';
-          aiStatusText.innerText = 'JSON Extraction Complete!';
+          aiStatusMsg.innerText = 'JSON Extraction Complete!';
           jsonResultSection.scrollIntoView({ behavior: 'smooth' });
         } else {
           alert(`Extraction Failed: ${resData.error || 'Unknown error'}`);
-          aiStatusText.innerText = 'Extraction Failed!';
+          aiStatusMsg.innerText = 'Extraction Failed!';
         }
       } catch (err) {
         console.error(err);
         alert('AI Extraction Error!');
-        aiStatusText.innerText = 'Extraction Failed!';
+        aiStatusMsg.innerText = 'Extraction Failed!';
       } finally {
-     extractJsonBtn.disabled = false;
-        extractJsonBtn.innerText = '2. Extract Property JSON with Gemini AI';
+        extractJsonBtn.disabled = false;
+        extractJsonBtn.innerText = 'Extract Property JSON with Gemini AI';
       }
     });
 
@@ -624,10 +705,10 @@
       const text = jsonDisplay.innerText;
       navigator.clipboard.writeText(text).then(() => {
         copyJsonBtn.innerText = 'JSON Copied!';
-        copyJsonBtn.style.background = '#10b981';
+        copyJsonBtn.style.background = '#2563eb';
         setTimeout(() => {
           copyJsonBtn.innerText = 'Copy JSON Code';
-          copyJsonBtn.style.background = '#8b5cf6';
+          copyJsonBtn.style.background = '#10b981';
         }, 2000);
       });
     });
