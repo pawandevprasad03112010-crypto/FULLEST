@@ -3,17 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Crop & Watermark Tool</title>
+  <title>Complete Property Automation Tool</title>
   
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
   
   <style>
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       padding: 15px;
-      background-color: #f4f6f8;
-      max-width: 600px;
+      background-color: #f1f3f6;
+      max-width: 500px;
       margin: 0 auto;
       color: #333;
     }
@@ -21,7 +21,7 @@
     .card-box {
       background: #ffffff;
       padding: 20px;
-      border-radius: 12px;
+      border-radius: 14px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.06);
       margin-bottom: 20px;
     }
@@ -153,6 +153,7 @@
       gap: 12px;
       justify-content: center;
       margin-bottom: 15px;
+      flex-wrap: wrap;
     }
     .processed-card {
       background: #fff;
@@ -201,7 +202,7 @@
       font-size: 15px;
     }
 
-    /* Video Style Cloudinary URL Box */
+    /* Cloudinary URL List */
     #urlListSection {
       display: none;
       margin-top: 15px;
@@ -242,19 +243,37 @@
       display: none;
     }
 
-    pre {
-      background: #0d1117;
-      color: #7ee787;
-      padding: 15px;
+    /* MongoDB Badge & Textarea */
+    .badge-box {
+      background-color: #e6f7f5;
+      color: #0f766e;
+      padding: 10px 12px;
       border-radius: 8px;
-      overflow-x: auto;
-      font-size: 13px;
-      margin-top: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.4;
+      margin-bottom: 18px;
     }
+
+    textarea {
+      width: 100%;
+      height: 250px;
+      background-color: #f8fafc;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 12px;
+      padding: 14px;
+      font-family: "Courier New", Courier, monospace;
+      font-size: 13px;
+      color: #334155;
+      resize: vertical;
+      outline: none;
+    }
+    textarea:focus { border-color: #2563eb; background-color: #ffffff; }
   </style>
 </head>
 <body>
 
+  <!-- Step 1 Card: Crop & Watermark Tool -->
   <div class="card-box">
     <div class="main-title">Crop & Watermark Tool</div>
     
@@ -283,27 +302,29 @@
 
   <div id="gallery"></div>
 
-  <div id="processedSection">
+  <!-- Processed Photos Preview -->
+  <div id="processedSection" class="card-box">
     <div class="processed-heading">Processed Photos Preview</div>
     <div class="processed-grid" id="processedGrid"></div>
     
     <button class="btn-green" id="getCloudinaryUrlsBtn">Get All Cloudinary URLs</button>
     <div id="statusMsg" class="status-msg"></div>
 
+    <!-- Generated Cloudinary URLs Box -->
     <div id="urlListSection">
-      <div style="font-weight:bold; margin-bottom:10px; font-size:14px; color:#374151;">Generated Cloudinary URLs:</div>
+      <div style="font-weight:bold; margin: 15px 0 10px 0; font-size:14px; color:#374151;">Generated Cloudinary URLs:</div>
       <div id="urlRowsContainer"></div>
-      
       <button class="btn-purple" id="copyAllUrlsBtn">Copy All URLs</button>
     </div>
   </div>
 
-  <div id="aiExtractSection" class="card-box" style="border: 2px solid #8b5cf6; margin-top:25px;">
+  <!-- Step 2 Card: Gemini AI Raw Detail Photos Upload -->
+  <div id="aiExtractSection" class="card-box" style="border: 2px solid #8b5cf6;">
     <div class="main-title" style="color:#8b5cf6;">Step 2: Gemini AI Data Extraction</div>
-    <p style="font-size:13px; color:#6b7280; margin-bottom:15px; text-align:center;">Ab Property ki Detail/Raw Screenshots upload karein Gemini AI se JSON extract karne ke liye.</p>
+    <p style="font-size:13px; color:#6b7280; margin-bottom:15px; text-align:center;">Original property detail screenshots upload karein JSON extract karne ke liye.</p>
     
     <div class="control-group">
-      <label>Select Original / Raw Property Detail Photos:</label>
+      <label>Select Original Property Detail Photos:</label>
       <input type="file" id="dataImagesInput" multiple accept="image/*">
     </div>
 
@@ -311,10 +332,21 @@
     <div id="aiStatusMsg" class="status-msg"></div>
   </div>
 
+  <!-- Step 3 Card: JSON Data Entry & MongoDB Submit -->
   <div id="jsonResultSection" class="card-box">
-    <div class="main-title" style="color:#10b981; text-align:left;">AI Extracted JSON Result:</div>
-    <pre id="jsonDisplay"></pre>
-    <button class="btn-green" id="copyJsonBtn" style="margin-top:10px;">Copy JSON Code</button>
+    <div class="main-title" style="text-align:left;">JSON Data Entry</div>
+    
+    <div class="badge-box">
+      Database: {{ db_name }} |<br>
+      Collection: {{ collection_name }}
+    </div>
+
+    <div class="control-group">
+      <textarea id="jsonDataInput" spellcheck="false"></textarea>
+    </div>
+
+    <button class="btn-blue" id="submitDbBtn">Submit to Database</button>
+    <div id="dbStatusMsg" class="status-msg"></div>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
@@ -342,8 +374,9 @@
     const aiStatusMsg = document.getElementById('aiStatusMsg');
     
     const jsonResultSection = document.getElementById('jsonResultSection');
-    const jsonDisplay = document.getElementById('jsonDisplay');
-    const copyJsonBtn = document.getElementById('copyJsonBtn');
+    const jsonDataInput = document.getElementById('jsonDataInput');
+    const submitDbBtn = document.getElementById('submitDbBtn');
+    const dbStatusMsg = document.getElementById('dbStatusMsg');
 
     let cropperInstances = [];
     let wmPositions = [];
@@ -398,7 +431,6 @@
       `;
 
       gallery.appendChild(card);
-
       const imageEl = document.getElementById(`crop-img-${index}`);
       
       const cropper = new Cropper(imageEl, {
@@ -450,7 +482,6 @@
       wrapper.appendChild(overlay);
 
       let isWMDragging = false;
-
       const onWMMove = (e) => {
         if (!isWMDragging) return;
         const rect = wrapper.getBoundingClientRect();
@@ -468,18 +499,13 @@
         overlay.style.top = `${y * 100}%`;
       };
 
-      const startWMDrag = (e) => { 
-        isWMDragging = true; 
-        e.stopPropagation();
-      };
+      const startWMDrag = (e) => { isWMDragging = true; e.stopPropagation(); };
       const stopWMDrag = () => { isWMDragging = false; };
 
       overlay.addEventListener('mousedown', startWMDrag);
       overlay.addEventListener('touchstart', startWMDrag, { passive: true });
-
       window.addEventListener('mousemove', onWMMove);
       window.addEventListener('touchmove', onWMMove, { passive: true });
-
       window.addEventListener('mouseup', stopWMDrag);
       window.addEventListener('touchend', stopWMDrag);
     }
@@ -507,7 +533,6 @@
 
         outCanvas.width = srcCanvas.width;
         outCanvas.height = srcCanvas.height;
-
         ctx.drawImage(srcCanvas, 0, 0);
 
         const pos = wmPositions[index];
@@ -521,7 +546,6 @@
         ctx.shadowBlur = fontSize * 0.1;
 
         ctx.fillText(wmText.value, pos.x * outCanvas.width, pos.y * outCanvas.height);
-
         outCanvas.toBlob((blob) => resolve(blob), 'image/png');
       });
     }
@@ -538,7 +562,6 @@
 
       for (let index = 0; index < cropperInstances.length; index++) {
         if (!cropperInstances[index]) continue;
-        
         const blob = await getFinalImageBlob(index);
         if (!blob) continue;
 
@@ -553,17 +576,11 @@
           <img class="processed-img" src="${URL.createObjectURL(blob)}">
         `;
 
-        const removeBtn = card.querySelector('.remove-btn');
-        removeBtn.addEventListener('click', () => {
+        card.querySelector('.remove-btn').addEventListener('click', () => {
           const blobIndex = processedBlobs.indexOf(blob);
-          if (blobIndex > -1) {
-            processedBlobs.splice(blobIndex, 1);
-          }
+          if (blobIndex > -1) processedBlobs.splice(blobIndex, 1);
           card.remove();
-
-          if (processedBlobs.length === 0) {
-            processedSection.style.display = 'none';
-          }
+          if (processedBlobs.length === 0) processedSection.style.display = 'none';
         });
 
         processedGrid.appendChild(card);
@@ -575,7 +592,7 @@
       }
     });
 
-    // STEP 1: Upload Edited Images to Cloudinary
+    // STEP 1: Upload to Cloudinary
     getCloudinaryUrlsBtn.addEventListener('click', async () => {
       if (processedBlobs.length === 0) return alert('No processed photos to upload!');
 
@@ -585,23 +602,17 @@
 
       const formData = new FormData();
       processedBlobs.forEach((blob, i) => {
-        const serialName = `photo_${String(i + 1).padStart(3, '0')}.png`;
-        formData.append('images', blob, serialName);
+        formData.append('images', blob, `photo_${String(i + 1).padStart(3, '0')}.png`);
       });
 
       try {
-        const res = await fetch('/api/upload-cloudinary', {
-          method: 'POST',
-          body: formData
-        });
-
+        const res = await fetch('/api/upload-cloudinary', { method: 'POST', body: formData });
         const resData = await res.json();
 
         if (resData.success && resData.urls) {
           uploadedCloudinaryUrls = resData.urls;
-          
-          // Build Video-Style URL list with copy buttons
           urlRowsContainer.innerHTML = '';
+          
           uploadedCloudinaryUrls.forEach((url, i) => {
             const row = document.createElement('div');
             row.className = 'url-row';
@@ -611,31 +622,25 @@
               <button class="copy-single-btn">Copy</button>
             `;
 
-            const singleCopyBtn = row.querySelector('.copy-single-btn');
-            singleCopyBtn.addEventListener('click', () => {
+            const btn = row.querySelector('.copy-single-btn');
+            btn.addEventListener('click', () => {
               navigator.clipboard.writeText(url);
-              singleCopyBtn.innerText = 'Copied!';
-              singleCopyBtn.style.background = '#10b981';
-              setTimeout(() => {
-                singleCopyBtn.innerText = 'Copy';
-                singleCopyBtn.style.background = '#2563eb';
-              }, 2000);
+              btn.innerText = 'Copied!';
+              btn.style.background = '#10b981';
+              setTimeout(() => { btn.innerText = 'Copy'; btn.style.background = '#2563eb'; }, 2000);
             });
-
             urlRowsContainer.appendChild(row);
           });
 
           statusMsg.innerText = 'All URLs Generated Successfully!';
           urlListSection.style.display = 'block';
           aiExtractSection.style.display = 'block';
-
           aiExtractSection.scrollIntoView({ behavior: 'smooth' });
         } else {
           alert(`Upload Failed: ${resData.error || 'Unknown error'}`);
           statusMsg.innerText = 'Upload Failed!';
         }
       } catch (err) {
-        console.error(err);
         alert('Cloudinary Upload Error!');
         statusMsg.innerText = 'Upload Failed!';
       } finally {
@@ -646,23 +651,17 @@
 
     copyAllUrlsBtn.addEventListener('click', () => {
       if (uploadedCloudinaryUrls.length === 0) return;
-      const allText = uploadedCloudinaryUrls.join('\n');
-      navigator.clipboard.writeText(allText).then(() => {
+      navigator.clipboard.writeText(uploadedCloudinaryUrls.join('\n')).then(() => {
         copyAllUrlsBtn.innerText = 'All URLs Copied!';
         copyAllUrlsBtn.style.background = '#10b981';
-        setTimeout(() => {
-          copyAllUrlsBtn.innerText = 'Copy All URLs';
-          copyAllUrlsBtn.style.background = '#8b5cf6';
-        }, 2000);
+        setTimeout(() => { copyAllUrlsBtn.innerText = 'Copy All URLs'; copyAllUrlsBtn.style.background = '#8b5cf6'; }, 2000);
       });
     });
 
-    // STEP 2: Extract Data with Gemini AI using Raw Photos + Cloudinary URLs
+    // STEP 2: Gemini AI Extraction
     extractJsonBtn.addEventListener('click', async () => {
       const dataFiles = dataImagesInput.files;
-      if (!dataFiles || dataFiles.length === 0) {
-        return alert('Please select raw detail photos for Gemini AI!');
-      }
+      if (!dataFiles || dataFiles.length === 0) return alert('Please select raw detail photos for Gemini AI!');
 
       extractJsonBtn.disabled = true;
       extractJsonBtn.innerText = 'Gemini AI Extracting Data...';
@@ -675,15 +674,11 @@
       formData.append('cloudinary_urls', JSON.stringify(uploadedCloudinaryUrls));
 
       try {
-        const res = await fetch('/api/extract-json', {
-          method: 'POST',
-          body: formData
-        });
-
+        const res = await fetch('/api/extract-json', { method: 'POST', body: formData });
         const resData = await res.json();
 
         if (resData.success && resData.data) {
-          jsonDisplay.innerText = JSON.stringify(resData.data, null, 2);
+          jsonDataInput.value = JSON.stringify(resData.data, null, 2);
           jsonResultSection.style.display = 'block';
           aiStatusMsg.innerText = 'JSON Extraction Complete!';
           jsonResultSection.scrollIntoView({ behavior: 'smooth' });
@@ -692,7 +687,6 @@
           aiStatusMsg.innerText = 'Extraction Failed!';
         }
       } catch (err) {
-        console.error(err);
         alert('AI Extraction Error!');
         aiStatusMsg.innerText = 'Extraction Failed!';
       } finally {
@@ -701,17 +695,42 @@
       }
     });
 
-    copyJsonBtn.addEventListener('click', () => {
-      const text = jsonDisplay.innerText;
-      navigator.clipboard.writeText(text).then(() => {
-        copyJsonBtn.innerText = 'JSON Copied!';
-        copyJsonBtn.style.background = '#2563eb';
-        setTimeout(() => {
-          copyJsonBtn.innerText = 'Copy JSON Code';
-          copyJsonBtn.style.background = '#10b981';
-        }, 2000);
-      });
+    // STEP 3: Submit to MongoDB Database
+    submitDbBtn.addEventListener('click', async () => {
+      const rawText = jsonDataInput.value.trim();
+      if (!rawText) return alert('JSON data field is empty!');
+
+      submitDbBtn.disabled = true;
+      submitDbBtn.innerText = 'Submitting to Database...';
+      dbStatusMsg.innerText = '';
+
+      try {
+        const response = await fetch('/api/submit-to-db', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ json_data: rawText })
+        });
+
+        const result = await response.json();
+        if (result.success) {
+          dbStatusMsg.className = 'status-msg success';
+          dbStatusMsg.style.color = '#16a34a';
+          dbStatusMsg.innerText = result.message;
+        } else {
+          dbStatusMsg.className = 'status-msg error';
+          dbStatusMsg.style.color = '#dc2626';
+          dbStatusMsg.innerText = result.error || 'Failed to submit data.';
+        }
+      } catch (err) {
+        dbStatusMsg.className = 'status-msg error';
+        dbStatusMsg.style.color = '#dc2626';
+        dbStatusMsg.innerText = 'Network error or server unreachable!';
+      } finally {
+        submitDbBtn.disabled = false;
+        submitDbBtn.innerText = 'Submit to Database';
+      }
     });
   </script>
 </body>
 </html>
+          
