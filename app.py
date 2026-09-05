@@ -181,25 +181,43 @@ def apply_custom_logic(data, uploaded_urls):
 def home():
     return render_template('index.html')
 
-@app.route('/api/upload-multiple', methods=['POST'])
-def upload_multiple():
+# API 1: Sirf Edited Images ko Cloudinary par upload karke URLs laayega
+@app.route('/api/upload-cloudinary', methods=['POST'])
+def upload_cloudinary():
     uploaded_files = request.files.getlist('images')
     if not uploaded_files or len(uploaded_files) == 0:
         return Response(json.dumps({"success": False, "error": "No image files provided"}), status=400, mimetype='application/json')
 
     urls = []
-    pil_images = []
-    
     try:
         for file in uploaded_files:
             upload_result = cloudinary.uploader.upload(file.stream, folder="processed_images")
             urls.append(upload_result['secure_url'])
-            
-            file.stream.seek(0)
+        return Response(json.dumps({"success": True, "urls": urls}), status=200, mimetype='application/json')
+    except Exception as e:
+        return Response(json.dumps({"success": False, "error": str(e)}), status=500, mimetype='application/json')
+
+# API 2: Original Data Photos aur Cloudinary URLs lekar Gemini se JSON extract karega
+@app.route('/api/extract-json', methods=['POST'])
+def extract_json():
+    data_files = request.files.getlist('data_images')
+    urls_raw = request.form.get('cloudinary_urls', '[]')
+    
+    try:
+        uploaded_urls = json.loads(urls_raw)
+    except Exception:
+        uploaded_urls = []
+
+    if not data_files or len(data_files) == 0:
+        return Response(json.dumps({"success": False, "error": "No raw property images provided for extraction"}), status=400, mimetype='application/json')
+
+    try:
+        pil_images = []
+        for file in data_files:
             pil_images.append(Image.open(file.stream))
 
         if not client:
-            return Response(json.dumps({"success": True, "urls": urls, "data": get_default_structure(), "error": "GEMINI_API_KEY environment variable missing on Render"}), status=200, mimetype='application/json')
+            return Response(json.dumps({"success": False, "error": "GEMINI_API_KEY environment variable missing on Render"}), status=500, mimetype='application/json')
 
         prompt = f"""
         You are an expert real estate data extractor. Extract property details combining ALL uploaded images.
@@ -228,7 +246,7 @@ def upload_multiple():
             )
         )
         extracted_json = json.loads(response.text)
-        final_data = apply_custom_logic(extracted_json, urls)
+        final_data = apply_custom_logic(extracted_json, uploaded_urls)
 
         template = get_default_structure()
         ordered_output = {}
@@ -238,7 +256,7 @@ def upload_multiple():
             else:
                 ordered_output[key] = template[key]
 
-        return Response(json.dumps({"success": True, "urls": urls, "data": ordered_output}), status=200, mimetype='application/json')
+        return Response(json.dumps({"success": True, "data": ordered_output}), status=200, mimetype='application/json')
 
     except Exception as e:
         return Response(json.dumps({"success": False, "error": str(e)}), status=500, mimetype='application/json')
