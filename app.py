@@ -1,10 +1,11 @@
 import os
 import json
-from flask import Flask, request, Response, render_template
+from flask import Flask, request, Response, render_template, jsonify
 from flask_cors import CORS
 from PIL import Image
 import cloudinary
 import cloudinary.uploader
+from pymongo import MongoClient
 from google import genai
 from google.genai import types
 
@@ -19,6 +20,14 @@ cloudinary.config(
   api_key = os.environ.get("CLOUDINARY_API_KEY", "368463435529631"),
   api_secret = os.environ.get("CLOUDINARY_API_SECRET", "6u7lnfIRo4ikkXSR_GM2ziUtStM")
 )
+
+# MongoDB Config
+MONGO_URI = os.environ.get("MONGO_URI", "mongodb+srv://username:password@cluster.mongodb.net/")
+mongo_client = MongoClient(MONGO_URI)
+DB_NAME = "BUY_PROPERTY_KOLKATA"
+COLLECTION_NAME = "KOLKATA_LISTING"
+db = mongo_client[DB_NAME]
+collection = db[COLLECTION_NAME]
 
 # Gemini API Config
 API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -178,7 +187,11 @@ def apply_custom_logic(data, uploaded_urls):
 
 @app.route('/')
 def home():
-    return render_template('index.html')
+    return render_template(
+        'index.html',
+        db_name=DB_NAME,
+        collection_name=COLLECTION_NAME
+    )
 
 # Step 1 Route: Upload Edited Images to Cloudinary
 @app.route('/api/upload-cloudinary', methods=['POST'])
@@ -216,7 +229,7 @@ def extract_json():
             pil_images.append(Image.open(file.stream))
 
         if not client:
-            return Response(json.dumps({"success": False, "error": "GEMINI_API_KEY environment variable missing on Render"}), status=500, mimetype='application/json')
+            return Response(json.dumps({"success": False, "error": "GEMINI_API_KEY environment variable missing"}), status=500, mimetype='application/json')
 
         prompt = f"""
         You are an expert real estate data extractor. Extract property details combining ALL uploaded images.
@@ -260,7 +273,34 @@ def extract_json():
     except Exception as e:
         return Response(json.dumps({"success": False, "error": str(e)}), status=500, mimetype='application/json')
 
+# Step 3 Route: Submit Final JSON to MongoDB Database
+@app.route('/api/submit-to-db', methods=['POST'])
+def submit_to_db():
+    try:
+        data = request.get_json()
+        raw_json_str = data.get("json_data", "")
+
+        if not raw_json_str:
+            return jsonify({"success": False, "error": "JSON data field is empty!"}), 400
+
+        parsed_data = json.loads(raw_json_str)
+
+        if isinstance(parsed_data, list):
+            result = collection.insert_many(parsed_data)
+            inserted_count = len(result.inserted_ids)
+            msg = f"{inserted_count} documents inserted successfully!"
+        else:
+            result = collection.insert_one(parsed_data)
+            msg = f"Document inserted successfully with ID: {str(result.inserted_id)}"
+
+        return jsonify({"success": True, "message": msg}), 200
+
+    except json.JSONDecodeError as e:
+        return jsonify({"success": False, "error": f"Invalid JSON Format: {str(e)}"}), 400
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-  
+      
