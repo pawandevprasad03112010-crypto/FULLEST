@@ -1,6 +1,5 @@
 import os
 import json
-import requests
 from flask import Flask, request, Response, render_template
 from flask_cors import CORS
 from PIL import Image
@@ -14,14 +13,14 @@ CORS(app)
 
 app.json.sort_keys = False
 
-# Cloudinary Setup
+# Cloudinary Config
 cloudinary.config(
   cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME", "pfmjg7ip"),
   api_key = os.environ.get("CLOUDINARY_API_KEY", "368463435529631"),
   api_secret = os.environ.get("CLOUDINARY_API_SECRET", "6u7lnfIRo4ikkXSR_GM2ziUtStM")
 )
 
-# Gemini API Setup
+# Gemini API Config
 API_KEY = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=API_KEY) if API_KEY else None
 
@@ -181,7 +180,7 @@ def apply_custom_logic(data, uploaded_urls):
 def home():
     return render_template('index.html')
 
-# API 1: Sirf Edited Images ko Cloudinary par upload karke URLs laayega
+# Step 1 Route: Upload Edited Images to Cloudinary
 @app.route('/api/upload-cloudinary', methods=['POST'])
 def upload_cloudinary():
     uploaded_files = request.files.getlist('images')
@@ -197,7 +196,7 @@ def upload_cloudinary():
     except Exception as e:
         return Response(json.dumps({"success": False, "error": str(e)}), status=500, mimetype='application/json')
 
-# API 2: Original Data Photos aur Cloudinary URLs lekar Gemini se JSON extract karega
+# Step 2 Route: Gemini AI JSON Extraction from Raw Detail Photos
 @app.route('/api/extract-json', methods=['POST'])
 def extract_json():
     data_files = request.files.getlist('data_images')
@@ -209,7 +208,7 @@ def extract_json():
         uploaded_urls = []
 
     if not data_files or len(data_files) == 0:
-        return Response(json.dumps({"success": False, "error": "No raw property images provided for extraction"}), status=400, mimetype='application/json')
+        return Response(json.dumps({"success": False, "error": "No raw detail images provided"}), status=400, mimetype='application/json')
 
     try:
         pil_images = []
@@ -264,4 +263,4 @@ def extract_json():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-          
+  
