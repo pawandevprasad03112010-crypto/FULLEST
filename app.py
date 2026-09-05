@@ -1,5 +1,6 @@
 import os
 import json
+import time
 from flask import Flask, request, Response, render_template, jsonify
 from flask_cors import CORS
 from PIL import Image
@@ -22,12 +23,15 @@ cloudinary.config(
 )
 
 # MongoDB Config
-MONGO_URI = os.environ.get("MONGO_URI", "mongodb+srv://username:password@cluster.mongodb.net/")
-mongo_client = MongoClient(MONGO_URI)
+MONGO_URI = os.environ.get("MONGO_URI", "")
 DB_NAME = "BUY_PROPERTY_KOLKATA"
 COLLECTION_NAME = "KOLKATA_LISTING"
-db = mongo_client[DB_NAME]
-collection = db[COLLECTION_NAME]
+
+def get_mongo_collection():
+    if not MONGO_URI or ("cluster.mongodb.net" in MONGO_URI and "username" in MONGO_URI):
+        raise Exception("MONGO_URI environment variable properly set nahi hai Render par!")
+    client = MongoClient(MONGO_URI)
+    return client[DB_NAME][COLLECTION_NAME]
 
 # Gemini API Config
 API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -185,6 +189,31 @@ def apply_custom_logic(data, uploaded_urls):
 
     return data
 
+def call_gemini_with_retry(contents, config):
+    # Multiple models fallback list
+    models_to_try = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
+    
+    last_error = None
+    for model_name in models_to_try:
+        # Har model par 3 baar retry karega
+        for attempt in range(3):
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=contents,
+                    config=config
+                )
+                return response
+            except Exception as e:
+                last_error = e
+                err_str = str(e).lower()
+                # Agar 503/429/unavailable error hai toh wait karke retry karo
+                if "503" in err_str or "unavailable" in err_str or "resource_exhausted" in err_str or "429" in err_str:
+                    time.sleep(2 * (attempt + 1))  # 2s, 4s retry delay
+                else:
+                    break  # Agar koi dusra error hai toh next model try karo
+    raise last_error
+
 @app.route('/')
 def home():
     return render_template(
@@ -193,7 +222,6 @@ def home():
         collection_name=COLLECTION_NAME
     )
 
-# Step 1 Route: Upload Edited Images to Cloudinary
 @app.route('/api/upload-cloudinary', methods=['POST'])
 def upload_cloudinary():
     uploaded_files = request.files.getlist('images')
@@ -209,7 +237,6 @@ def upload_cloudinary():
     except Exception as e:
         return Response(json.dumps({"success": False, "error": str(e)}), status=500, mimetype='application/json')
 
-# Step 2 Route: Gemini AI JSON Extraction from Raw Detail Photos
 @app.route('/api/extract-json', methods=['POST'])
 def extract_json():
     data_files = request.files.getlist('data_images')
@@ -250,13 +277,11 @@ def extract_json():
         """
 
         contents = pil_images + [prompt]
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=contents,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json"
-            )
+        config = types.GenerateContentConfig(
+            response_mime_type="application/json"
         )
+        
+        response = call_gemini_with_retry(contents, config)
         extracted_json = json.loads(response.text)
         final_data = apply_custom_logic(extracted_json, uploaded_urls)
 
@@ -271,12 +296,12 @@ def extract_json():
         return Response(json.dumps({"success": True, "data": ordered_output}), status=200, mimetype='application/json')
 
     except Exception as e:
-        return Response(json.dumps({"success": False, "error": str(e)}), status=500, mimetype='application/json')
+        return Response(json.dumps({"success": False, "error": f"Extraction Failed: {str(e)}"}), status=500, mimetype='application/json')
 
-# Step 3 Route: Submit Final JSON to MongoDB Database
 @app.route('/api/submit-to-db', methods=['POST'])
 def submit_to_db():
     try:
+        collection = get_mongo_collection()
         data = request.get_json()
         raw_json_str = data.get("json_data", "")
 
@@ -303,4 +328,4 @@ def submit_to_db():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-      
+              
