@@ -193,7 +193,7 @@ def call_gemini_rest_api(pil_images, prompt):
         raise Exception("GEMINI_API_KEY environment variable missing")
 
     # Correct Active REST API Model Endpoint
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.6-flash:generateContent?key={API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={API_KEY}"
     
     parts = []
     parts.append({"text": prompt})
