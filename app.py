@@ -33,9 +33,12 @@ def get_mongo_collection():
     client = MongoClient(MONGO_URI)
     return client[DB_NAME][COLLECTION_NAME]
 
-# Gemini API Config (Render Environment Variable se GEMINI_API_KEY lega)
+# Gemini API Config (v1 API Version set kiya gaya hai 404 error se bachne ke liye)
 API_KEY = os.environ.get("GEMINI_API_KEY")
-client = genai.Client(api_key=API_KEY) if API_KEY else None
+client = genai.Client(
+    api_key=API_KEY,
+    http_options={'api_version': 'v1'}
+) if API_KEY else None
 
 DEFAULT_AMENITIES = ["LIFT", "SECURITY", "POWER_BACKUP", "PARKING"]
 
@@ -190,8 +193,8 @@ def apply_custom_logic(data, uploaded_urls):
     return data
 
 def call_gemini_with_retry(contents, config):
-    # Standard Sahi Model Names
-    models_to_try = ['gemini-2.0-flash', 'gemini-1.5-flash']
+    # API Endpoint Supported Models Only
+    models_to_try = ['gemini-2.0-flash', 'gemini-1.5-flash-latest']
     
     last_error = None
     for model_name in models_to_try:
@@ -326,4 +329,4 @@ def submit_to_db():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-      
+  
