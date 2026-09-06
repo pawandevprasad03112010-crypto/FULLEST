@@ -33,7 +33,7 @@ def get_mongo_collection():
     client = MongoClient(MONGO_URI)
     return client[DB_NAME][COLLECTION_NAME]
 
-# Gemini API Config
+# Gemini API Config (Render Environment Variable se GEMINI_API_KEY lega)
 API_KEY = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=API_KEY) if API_KEY else None
 
@@ -190,12 +190,11 @@ def apply_custom_logic(data, uploaded_urls):
     return data
 
 def call_gemini_with_retry(contents, config):
-    # Support hone wale sahi Gemini models
+    # Standard Sahi Model Names
     models_to_try = ['gemini-2.0-flash', 'gemini-1.5-flash']
     
     last_error = None
     for model_name in models_to_try:
-        # Har model par 3 baar retry karega
         for attempt in range(3):
             try:
                 response = client.models.generate_content(
@@ -207,11 +206,10 @@ def call_gemini_with_retry(contents, config):
             except Exception as e:
                 last_error = e
                 err_str = str(e).lower()
-                # Rate limit ya server issue hone par wait karke retry karega
                 if "503" in err_str or "unavailable" in err_str or "resource_exhausted" in err_str or "429" in err_str:
                     time.sleep(2 * (attempt + 1))
                 else:
-                    break  # Dusra error hone par next model try karega
+                    break
     raise last_error
 
 @app.route('/')
@@ -328,4 +326,4 @@ def submit_to_db():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-                       
+      
