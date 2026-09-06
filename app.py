@@ -3,20 +3,21 @@ import json
 import time
 import base64
 import io
-import requests
 from flask import Flask, request, Response, render_template, jsonify
 from flask_cors import CORS
 from PIL import Image
 import cloudinary
 import cloudinary.uploader
 from pymongo import MongoClient
+from google import genai
+from google.genai import types
 
 app = Flask(__name__)
 CORS(app)
 
 app.json.sort_keys = False
 
-# Cloudinary Config (Use environment variables for security)
+# Cloudinary Config
 cloudinary.config(
   cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME", "pfmjg7ip"),
   api_key = os.environ.get("CLOUDINARY_API_KEY", "368463435529631"),
@@ -192,49 +193,28 @@ def call_gemini_rest_api(pil_images, prompt):
     if not API_KEY:
         raise Exception("GEMINI_API_KEY environment variable missing")
 
-    # FIXED: Valid Gemini Model Endpoint
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={API_KEY}"
-  
-  
-  
+    # Official SDK client instance
+    client = genai.Client(api_key=API_KEY)
     
-    parts = []
-    parts.append({"text": prompt})
-    
-    for img in pil_images:
-        buffered = io.BytesIO()
-        img.convert('RGB').save(buffered, format="JPEG")
-        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-        parts.append({
-            "inline_data": {
-                "mime_type": "image/jpeg",
-                "data": img_str
-            }
-        })
+    contents = [prompt] + pil_images
 
-    payload = {
-        "contents": [{
-            "parts": parts
-        }],
-        "generationConfig": {
-            "response_mime_type": "application/json"
-        }
-    }
-
-    headers = {'Content-Type': 'application/json'}
+    config = types.GenerateContentConfig(
+        response_mime_type="application/json"
+    )
 
     last_err = None
     for attempt in range(3):
-        res = requests.post(url, headers=headers, json=payload)
-        if res.status_code == 200:
-            res_data = res.json()
-            raw_text = res_data['candidates'][0]['content']['parts'][0]['text']
-            return raw_text
-        elif res.status_code in [429, 503, 500]:
-            time.sleep(5 * (attempt + 1))  # Increased delay between retries
-            last_err = res.text
-        else:
-            raise Exception(f"API Error {res.status_code}: {res.text}")
+        try:
+            # Using official gemini-2.5-flash model via SDK
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=contents,
+                config=config,
+            )
+            return response.text
+        except Exception as e:
+            last_err = str(e)
+            time.sleep(5 * (attempt + 1))
 
     raise Exception(f"Failed after retries: {last_err}")
 
@@ -312,7 +292,7 @@ def extract_json():
         return Response(json.dumps({"success": True, "data": ordered_output}), status=200, mimetype='application/json')
 
     except Exception as e:
-        return Response(json.dumps({"success": False, "error": f"Extraction Failed: {str(e)} text"}), status=500, mimetype='application/json')
+        return Response(json.dumps({"success": False, "error": f"Extraction Failed: {str(e)}"}), status=500, mimetype='application/json')
 
 @app.route('/api/submit-to-db', methods=['POST'])
 def submit_to_db():
