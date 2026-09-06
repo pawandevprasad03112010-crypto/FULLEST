@@ -1,14 +1,15 @@
 import os
 import json
 import time
+import base64
+import io
+import requests
 from flask import Flask, request, Response, render_template, jsonify
 from flask_cors import CORS
 from PIL import Image
 import cloudinary
 import cloudinary.uploader
 from pymongo import MongoClient
-from google import genai
-from google.genai import types
 
 app = Flask(__name__)
 CORS(app)
@@ -33,12 +34,7 @@ def get_mongo_collection():
     client = MongoClient(MONGO_URI)
     return client[DB_NAME][COLLECTION_NAME]
 
-# Gemini API Config (v1 API Version set kiya gaya hai 404 error se bachne ke liye)
 API_KEY = os.environ.get("GEMINI_API_KEY")
-client = genai.Client(
-    api_key=API_KEY,
-    http_options={'api_version': 'v1'}
-) if API_KEY else None
 
 DEFAULT_AMENITIES = ["LIFT", "SECURITY", "POWER_BACKUP", "PARKING"]
 
@@ -192,28 +188,57 @@ def apply_custom_logic(data, uploaded_urls):
 
     return data
 
-def call_gemini_with_retry(contents, config):
-    # API Endpoint Supported Models Only
-    models_to_try = ['gemini-2.0-flash', 'gemini-1.5-flash-latest']
+# Direct REST API Call - SDK ki zarurat hi nahi hai
+def call_gemini_rest_api(pil_images, prompt):
+    if not API_KEY:
+        raise Exception("GEMINI_API_KEY environment variable missing")
+
+    # API Endpoint: gemini-1.5-flash standard URL
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
     
-    last_error = None
-    for model_name in models_to_try:
-        for attempt in range(3):
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=contents,
-                    config=config
-                )
-                return response
-            except Exception as e:
-                last_error = e
-                err_str = str(e).lower()
-                if "503" in err_str or "unavailable" in err_str or "resource_exhausted" in err_str or "429" in err_str:
-                    time.sleep(2 * (attempt + 1))
-                else:
-                    break
-    raise last_error
+    parts = []
+    
+    # Text Prompt add karein
+    parts.append({"text": prompt})
+    
+    # Images ko Base64 encode karke payload me add karein
+    for img in pil_images:
+        buffered = io.BytesIO()
+        img.convert('RGB').save(buffered, format="JPEG")
+        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        parts.append({
+            "inline_data": {
+                "mime_type": "image/jpeg",
+                "data": img_str
+            }
+        })
+
+    payload = {
+        "contents": [{
+            "parts": parts
+        }],
+        "generationConfig": {
+            "response_mime_type": "application/json"
+        }
+    }
+
+    headers = {'Content-Type': 'application/json'}
+
+    # 3 baar Retry logic
+    last_err = None
+    for attempt in range(3):
+        res = requests.post(url, headers=headers, json=payload)
+        if res.status_code == 200:
+            res_data = res.json()
+            raw_text = res_data['candidates'][0]['content']['parts'][0]['text']
+            return raw_text
+        elif res.status_code in [429, 503, 500]:
+            time.sleep(2 * (attempt + 1))
+            last_err = res.text
+        else:
+            raise Exception(f"API Error {res.status_code}: {res.text}")
+
+    raise Exception(f"Failed after retries: {last_err}")
 
 @app.route('/')
 def home():
@@ -256,9 +281,6 @@ def extract_json():
         for file in data_files:
             pil_images.append(Image.open(file.stream))
 
-        if not client:
-            return Response(json.dumps({"success": False, "error": "GEMINI_API_KEY environment variable missing"}), status=500, mimetype='application/json')
-
         prompt = f"""
         You are an expert real estate data extractor. Extract property details combining ALL uploaded images.
         Fit the extracted details into this exact JSON structure:
@@ -277,13 +299,8 @@ def extract_json():
         6. Return ONLY raw JSON string without markdown wrappers.
         """
 
-        contents = pil_images + [prompt]
-        config = types.GenerateContentConfig(
-            response_mime_type="application/json"
-        )
-        
-        response = call_gemini_with_retry(contents, config)
-        extracted_json = json.loads(response.text)
+        raw_json_resp = call_gemini_rest_api(pil_images, prompt)
+        extracted_json = json.loads(raw_json_resp)
         final_data = apply_custom_logic(extracted_json, uploaded_urls)
 
         template = get_default_structure()
