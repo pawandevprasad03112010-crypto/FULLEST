@@ -5,3 +5,4 @@ requests
 cloudinary
 pymongo
 google-genai
+gunicorn
