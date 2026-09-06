@@ -16,11 +16,11 @@ CORS(app)
 
 app.json.sort_keys = False
 
-# Cloudinary Config
+# Cloudinary Config (Use environment variables for security)
 cloudinary.config(
   cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME", "pfmjg7ip"),
   api_key = os.environ.get("CLOUDINARY_API_KEY", "368463435529631"),
-  api_secret = os.environ.get("CLOUDINARY_API_SECRET", "6u7lnfIRo4ikkXSR_GM2ziUtStM")
+  api_secret = os.environ.get("CLOUDINARY_API_SECRET", "")
 )
 
 # MongoDB Config
@@ -192,8 +192,8 @@ def call_gemini_rest_api(pil_images, prompt):
     if not API_KEY:
         raise Exception("GEMINI_API_KEY environment variable missing")
 
-    # Correct Active REST API Model Endpoint
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={API_KEY}"
+    # FIXED: Valid Gemini Model Endpoint
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
     
     parts = []
     parts.append({"text": prompt})
@@ -228,7 +228,7 @@ def call_gemini_rest_api(pil_images, prompt):
             raw_text = res_data['candidates'][0]['content']['parts'][0]['text']
             return raw_text
         elif res.status_code in [429, 503, 500]:
-            time.sleep(2 * (attempt + 1))
+            time.sleep(5 * (attempt + 1))  # Increased delay between retries
             last_err = res.text
         else:
             raise Exception(f"API Error {res.status_code}: {res.text}")
@@ -309,7 +309,7 @@ def extract_json():
         return Response(json.dumps({"success": True, "data": ordered_output}), status=200, mimetype='application/json')
 
     except Exception as e:
-        return Response(json.dumps({"success": False, "error": f"Extraction Failed: {str(e)}"}), status=500, mimetype='application/json')
+        return Response(json.dumps({"success": False, "error": f"Extraction Failed: {str(e)} text"}), status=500, mimetype='application/json')
 
 @app.route('/api/submit-to-db', methods=['POST'])
 def submit_to_db():
@@ -341,4 +341,4 @@ def submit_to_db():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-          
+  
