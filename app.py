@@ -192,8 +192,8 @@ def call_gemini_rest_api(pil_images, prompt):
     if not API_KEY:
         raise Exception("GEMINI_API_KEY environment variable missing")
 
-    # Fixed API endpoint to gemini-2.0-flash
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={API_KEY}"
+    # Correct Active REST API Model Endpoint
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={API_KEY}"
     
     parts = []
     parts.append({"text": prompt})
@@ -341,4 +341,4 @@ def submit_to_db():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-      
+          
