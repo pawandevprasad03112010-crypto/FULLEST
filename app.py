@@ -188,20 +188,16 @@ def apply_custom_logic(data, uploaded_urls):
 
     return data
 
-# Direct REST API Call - SDK ki zarurat hi nahi hai
 def call_gemini_rest_api(pil_images, prompt):
     if not API_KEY:
         raise Exception("GEMINI_API_KEY environment variable missing")
 
-    # API Endpoint: gemini-1.5-flash standard URL
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
+    # Fixed API endpoint to gemini-2.0-flash
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={API_KEY}"
     
     parts = []
-    
-    # Text Prompt add karein
     parts.append({"text": prompt})
     
-    # Images ko Base64 encode karke payload me add karein
     for img in pil_images:
         buffered = io.BytesIO()
         img.convert('RGB').save(buffered, format="JPEG")
@@ -224,7 +220,6 @@ def call_gemini_rest_api(pil_images, prompt):
 
     headers = {'Content-Type': 'application/json'}
 
-    # 3 baar Retry logic
     last_err = None
     for attempt in range(3):
         res = requests.post(url, headers=headers, json=payload)
@@ -346,4 +341,4 @@ def submit_to_db():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-  
+      
