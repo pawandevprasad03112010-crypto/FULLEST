@@ -190,8 +190,8 @@ def apply_custom_logic(data, uploaded_urls):
     return data
 
 def call_gemini_with_retry(contents, config):
-    # Multiple models fallback list
-    models_to_try = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
+    # Support hone wale sahi Gemini models
+    models_to_try = ['gemini-2.0-flash', 'gemini-1.5-flash']
     
     last_error = None
     for model_name in models_to_try:
@@ -207,11 +207,11 @@ def call_gemini_with_retry(contents, config):
             except Exception as e:
                 last_error = e
                 err_str = str(e).lower()
-                # Agar 503/429/unavailable error hai toh wait karke retry karo
+                # Rate limit ya server issue hone par wait karke retry karega
                 if "503" in err_str or "unavailable" in err_str or "resource_exhausted" in err_str or "429" in err_str:
-                    time.sleep(2 * (attempt + 1))  # 2s, 4s retry delay
+                    time.sleep(2 * (attempt + 1))
                 else:
-                    break  # Agar koi dusra error hai toh next model try karo
+                    break  # Dusra error hone par next model try karega
     raise last_error
 
 @app.route('/')
@@ -328,4 +328,4 @@ def submit_to_db():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-              
+                       
