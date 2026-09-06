@@ -90,9 +90,9 @@ def get_default_structure():
         "amenities": DEFAULT_AMENITIES,
         "media": {
             "images": [],
-            "ai_short_video_url": "na"
+            "ai_short_video_url": ""
         },
-        "created_at": "NOT_AVAILABLE_DATE"
+        "created_at": "few years"
     }
 
 def apply_custom_logic(data, uploaded_urls):
@@ -193,7 +193,7 @@ def call_gemini_rest_api(pil_images, prompt):
         raise Exception("GEMINI_API_KEY environment variable missing")
 
     # Correct Active REST API Model Endpoint
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.6-flash:generateContent?key={API_KEY}"
     
     parts = []
     parts.append({"text": prompt})
