@@ -12,13 +12,11 @@ from PIL import Image
 app = Flask(__name__)
 CORS(app)
 
-# Fetch strictly from Render Environment Variables (strip extra whitespaces)
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "").strip()
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "").strip()
 AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1").strip()
 AWS_S3_BUCKET_NAME = os.environ.get("AWS_S3_BUCKET_NAME", "property-images-estatex-1").strip()
 
-# Explicit S3 Client configuration using Signature Version 4
 s3_client = boto3.client(
     's3',
     aws_access_key_id=AWS_ACCESS_KEY_ID,
@@ -27,7 +25,6 @@ s3_client = boto3.client(
     config=Config(signature_version='s3v4')
 )
 
-# MongoDB Setup
 MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
 DB_NAME = os.environ.get("DB_NAME", "estatex_db")
 COLLECTION_NAME = os.environ.get("COLLECTION_NAME", "properties")
@@ -36,64 +33,31 @@ mongo_client = MongoClient(MONGO_URI)
 db = mongo_client[DB_NAME]
 collection = db[COLLECTION_NAME]
 
-# Gemini AI Setup
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY.strip())
 
-# Exhaustive Fallback List covering Pro, Flash, Ultra, Lite across all series (3.6, 3.0, 2.5, 2.0, 1.5, 1.0)
-ALL_GEMINI_FALLBACK_MODELS = [
-    # 3.6 & 3.x Series
-    'gemini-3.6-pro',
-    'gemini-3.6-flash',
-    'gemini-3.0-pro',
-    'gemini-3.0-flash',
-    'gemini-3-pro',
-    'gemini-3-flash',
 
-    # 2.5 Series
-    'gemini-2.5-pro',
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
-
-    # 2.0 Series
-    'gemini-2.0-flash',
-    'gemini-2.0-pro-exp',
-    'gemini-2.0-flash-lite',
-    'gemini-2.0-flash-thinking-exp',
-
-    # 1.5 Series
-    'gemini-1.5-pro',
-    'gemini-1.5-flash',
-    'gemini-1.5-flash-8b',
-
-    # 1.0 Series
-    'gemini-1.0-pro',
-    'gemini-1.0-ultra',
-    'gemini-pro',
-    'gemini-pro-vision'
-]
-
-
-def get_all_target_models():
-    """Fetches live API models first, then merges with explicit fallback list"""
-    model_list = []
-    
-    # 1. Fetch active models from API
+def get_working_model():
+    """Fetches real models available for your API key, avoiding invalid string errors"""
     try:
+        available = []
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
-                clean_name = m.name.replace('models/', '')
-                model_list.append(clean_name)
+                available.append(m.name)
+        
+        # Priority fallback order among VALID models
+        preferred = ['models/gemini-2.5-flash', 'models/gemini-2.0-flash', 'models/gemini-1.5-flash']
+        for pref in preferred:
+            if pref in available:
+                return pref.replace('models/', '')
+        
+        if available:
+            return available[0].replace('models/', '')
     except Exception:
         pass
-
-    # 2. Append explicit hardcoded models ensuring no duplicates
-    for target in ALL_GEMINI_FALLBACK_MODELS:
-        if target not in model_list:
-            model_list.append(target)
-
-    return model_list
+    
+    return 'gemini-2.5-flash'
 
 
 @app.route('/')
@@ -148,42 +112,15 @@ def extract_json():
         {json.dumps(s3_urls)}
         """
 
-        response_text = None
-        last_error = None
+        model_name = get_working_model()
+        model = genai.GenerativeModel(model_name)
 
-        candidate_models = get_all_target_models()
+        response = model.generate_content([prompt, *pil_images])
 
-        # Iterate through every model until one succeeds
-        for model_name in candidate_models:
-            try:
-                # Try with structured JSON output first
-                model = genai.GenerativeModel(
-                    model_name,
-                    generation_config={"response_mime_type": "application/json"}
-                )
-                response = model.generate_content([prompt, *pil_images])
-                if response and response.text:
-                    response_text = response.text
-                    break
-            except Exception as model_err:
-                # Fallback to standard request without response_mime_type if model doesn't support it
-                try:
-                    model = genai.GenerativeModel(model_name)
-                    response = model.generate_content([prompt, *pil_images])
-                    if response and response.text:
-                        response_text = response.text
-                        break
-                except Exception as inner_err:
-                    last_error = f"[{model_name}]: {str(inner_err)}"
-                    continue
+        if not response or not response.text:
+            return jsonify({"success": False, "error": "AI returned empty response"}), 500
 
-        if not response_text:
-            return jsonify({
-                "success": False,
-                "error": f"All specified Gemini models failed. Last Error: {last_error}"
-            }), 500
-
-        cleaned_text = response_text.replace("```json", "").replace("```", "").strip()
+        cleaned_text = response.text.replace("```json", "").replace("```", "").strip()
         parsed_json = json.loads(cleaned_text)
 
         return jsonify({"success": True, "data": parsed_json}), 200
@@ -222,4 +159,4 @@ def submit_to_db():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-    
+                        
