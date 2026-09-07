@@ -1,355 +1,124 @@
 import os
 import json
-import time
-import io
-import base64
-import requests
-from flask import Flask, request, Response, render_template, jsonify
+import uuid
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
-from PIL import Image
-import cloudinary
-import cloudinary.uploader
+import boto3
+from botocore.exceptions import NoCredentialsError
 from pymongo import MongoClient
+import google.generativeai as genai
+from PIL import Image
 
 app = Flask(__name__)
 CORS(app)
 
-app.json.sort_keys = False
+# AWS S3 Configuration
+AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "AKIA32VVAONMXVWBXOPE")
+AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "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")
+AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1")
+AWS_S3_BUCKET_NAME = os.environ.get("AWS_S3_BUCKET_NAME", "property-images-estatex-1")
 
-# Cloudinary Config
-cloudinary.config(
-    cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME"),
-    api_key=os.environ.get("CLOUDINARY_API_KEY"),
-    api_secret=os.environ.get("CLOUDINARY_API_SECRET")
+s3_client = boto3.client(
+    's3',
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    region_name=AWS_REGION
 )
 
-# MongoDB Config
-MONGO_URI = os.environ.get("MONGO_URI", "")
-DB_NAME = "BUY_PROPERTY_KOLKATA"
-COLLECTION_NAME = "KOLKATA_LISTING"
+# MongoDB Setup
+MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
+DB_NAME = os.environ.get("DB_NAME", "estatex_db")
+COLLECTION_NAME = os.environ.get("COLLECTION_NAME", "properties")
 
-def get_mongo_collection():
-    if not MONGO_URI or ("cluster.mongodb.net" in MONGO_URI and "username" in MONGO_URI):
-        raise Exception("MONGO_URI environment variable properly set nahi hai Render par!")
-    client = MongoClient(MONGO_URI)
-    return client[DB_NAME][COLLECTION_NAME]
+mongo_client = MongoClient(MONGO_URI)
+db = mongo_client[DB_NAME]
+collection = db[COLLECTION_NAME]
 
-DEFAULT_AMENITIES = ["LIFT", "SECURITY", "POWER_BACKUP", "PARKING"]
+# Gemini AI Setup
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
-def get_default_structure():
-    return {
-        "user_id": "ADMIN",
-        "posted_by_type": "ADMIN",
-        "category": {
-            "purpose": "BUY",
-            "property_type": "RESIDENTIAL",
-            "sub_type": "FLAT_APARTMENT"
-        },
-        "contact": {
-            "owner_name": "ADMIN",
-            "phone": "na",
-            "owner_type": "AGENT"
-        },
-        "title_and_description": {
-            "title": "na",
-            "description": "na"
-        },
-        "location": {
-            "city": "Kolkata",
-            "locality": "na",
-            "sub_locality": "na",
-            "landmark": "na",
-            "pincode": "na",
-            "state": "West Bengal",
-            "full_address": "na"
-        },
-        "pricing": {
-            "price_display": "na",
-            "price_numeric": "na",
-            "is_negotiable": True
-        },
-        "specifications": {
-            "bhk_type": "na",
-            "bhk_numeric": "na",
-            "builtup_sqft": "na",
-            "carpet_sqft": "na",
-            "super_builtup_sqft": "na",
-            "floor_no": "na",
-            "total_floors": "na",
-            "bathrooms": "na",
-            "balconies": "na",
-            "furnishing_status": "na",
-            "construction_status": "READY_TO_MOVE",
-            "facing_direction": "NORTH WEST",
-            "property_age": "na",
-            "parking": "YES",
-            "ownership_type": "FREEHOLD"
-        },
-        "amenities": DEFAULT_AMENITIES,
-        "media": {
-            "images": [],
-            "ai_short_video_url": ""
-        },
-        "created_at": "few years"
-    }
-
-def apply_custom_logic(data, uploaded_urls):
-    specs = data.get("specifications", {})
-
-    def to_float(val):
-        if val is None or str(val).strip().lower() in ["na", "", "none", "null"]:
-            return None
-        try:
-            clean_str = "".join([c for c in str(val) if c.isdigit() or c == '.'])
-            return float(clean_str) if clean_str else None
-        except (ValueError, TypeError):
-            return None
-
-    def to_int(val):
-        try: return int(str(val).strip())
-        except (ValueError, TypeError): return None
-
-    carpet = to_float(specs.get("carpet_sqft"))
-    builtup = to_float(specs.get("builtup_sqft"))
-    super_builtup = to_float(specs.get("super_builtup_sqft"))
-
-    if super_builtup and not builtup and not carpet:
-        builtup = round(super_builtup / 1.25, 2)
-        carpet = round(builtup / 1.20, 2)
-    elif builtup and not super_builtup and not carpet:
-        super_builtup = round(builtup * 1.25, 2)
-        carpet = round(builtup / 1.20, 2)
-    elif carpet and not builtup and not super_builtup:
-        builtup = round(carpet * 1.20, 2)
-        super_builtup = round(builtup * 1.25, 2)
-    elif carpet and super_builtup and not builtup:
-        builtup = round(carpet * 1.20, 2)
-    elif builtup and super_builtup and not carpet:
-        carpet = round(builtup / 1.20, 2)
-
-    specs["carpet_sqft"] = carpet if carpet is not None else "na"
-    specs["builtup_sqft"] = builtup if builtup is not None else "na"
-    specs["super_builtup_sqft"] = super_builtup if super_builtup is not None else "na"
-
-    const_status = str(specs.get("construction_status", "")).strip().upper()
-    if "UNDER" in const_status or "CONSTRUCTION" in const_status:
-        specs["construction_status"] = "UNDER_CONSTRUCTION"
-    elif not const_status or const_status.lower() in ["na", "none", "null"]:
-        specs["construction_status"] = "READY_TO_MOVE"
-
-    bathrooms = to_int(specs.get("bathrooms"))
-    balconies = to_int(specs.get("balconies"))
-    if balconies is None or str(balconies).lower() == "na":
-        if bathrooms is not None:
-            if 1 <= bathrooms <= 3:
-                specs["balconies"] = 1
-            elif bathrooms >= 4:
-                specs["balconies"] = 2
-            else:
-                specs["balconies"] = "na"
-        else:
-            specs["balconies"] = "na"
-
-    if not specs.get("parking") or str(specs.get("parking")).lower() == "na":
-        specs["parking"] = "YES"
-    if not specs.get("facing_direction") or str(specs.get("facing_direction")).lower() == "na":
-        specs["facing_direction"] = "NORTH WEST"
-
-    data["specifications"] = specs
-
-    loc = data.get("location", {})
-    sub_loc = str(loc.get("sub_locality", "")).strip()
-    if sub_loc and sub_loc.lower() != "na":
-        loc["locality"] = sub_loc
-        loc["sub_locality"] = sub_loc
-
-    amenities = data.get("amenities")
-    if not amenities or len(amenities) == 0:
-        data["amenities"] = DEFAULT_AMENITIES
-
-    address_parts = []
-    for key in ["sub_locality", "locality", "landmark", "city", "state", "pincode"]:
-        val = str(loc.get(key, "")).strip()
-        if val and val.lower() != "na" and val not in address_parts:
-            address_parts.append(val)
-    
-    if address_parts:
-        loc["full_address"] = ", ".join(address_parts)
-    else:
-        loc["full_address"] = "na"
-
-    data["location"] = loc
-
-    media = data.get("media", {})
-    media["images"] = uploaded_urls
-    data["media"] = media
-
-    return data
-
-# REST API WITH ALL GEMINI MODELS FALLBACK
-def call_gemini_rest_api(pil_images, prompt):
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise Exception("GEMINI_API_KEY environment variable set nahi hai Render par!")
-
-    # Complete list of available Gemini models to try one-by-one
-    models_to_try = [
-        "gemini-2.5-flash",
-        "gemini-1.5-flash",
-        "gemini-2.0-flash",
-        "gemini-2.5-pro",
-        "gemini-1.5-pro",
-        "gemini-3.6-flash"
-    ]
-    
-    parts = [{"text": prompt}]
-    for img in pil_images:
-        buffered = io.BytesIO()
-        img.save(buffered, format="JPEG")
-        img_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-        parts.append({
-            "inline_data": {
-                "mime_type": "image/jpeg",
-                "data": img_b64
-            }
-        })
-
-    payload = {
-        "contents": [{"parts": parts}],
-        "generationConfig": {
-            "responseMimeType": "application/json"
-        }
-    }
-
-    last_error = ""
-    # Loop over all available models
-    for model_name in models_to_try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
-        params = {"key": api_key}
-        
-        # Maximum 2 retries per model in case of temporary rate limit or 503 load issue
-        max_retries = 2
-        for attempt in range(max_retries):
-            try:
-                res = requests.post(url, params=params, json=payload, timeout=35)
-                res_data = res.json()
-                
-                if res.status_code == 200:
-                    return res_data['candidates'][0]['content']['parts'][0]['text']
-                
-                if 'error' in res_data:
-                    last_error = res_data['error'].get('message', res.text)
-                else:
-                    last_error = res.text
-
-                # Retry for rate limits / high demand before trying next model
-                if res.status_code in [429, 503]:
-                    time.sleep(2)
-                    continue
-                else:
-                    break # Model Not Found (404) or bad request: jump to next model
-            except Exception as e:
-                last_error = str(e)
-                time.sleep(1)
-
-    raise Exception(f"Gemini API Error (All Models Failed): {last_error}")
 
 @app.route('/')
 def home():
-    return render_template(
-        'index.html',
-        db_name=DB_NAME,
-        collection_name=COLLECTION_NAME
-    )
+    return render_template('index.html', db_name=DB_NAME, collection_name=COLLECTION_NAME)
 
-@app.route('/api/upload-cloudinary', methods=['POST'])
-def upload_cloudinary():
-    uploaded_files = request.files.getlist('images')
-    if not uploaded_files or len(uploaded_files) == 0:
-        return Response(json.dumps({"success": False, "error": "No image files provided"}), status=400, mimetype='application/json')
 
-    urls = []
+@app.route('/api/upload-s3', methods=['POST'])
+def upload_s3():
     try:
-        for file in uploaded_files:
-            file_bytes = file.read()
-            upload_result = cloudinary.uploader.upload(file_bytes, folder="processed_images")
-            urls.append(upload_result['secure_url'])
-        return Response(json.dumps({"success": True, "urls": urls}), status=200, mimetype='application/json')
+        files = request.files.getlist('images')
+        if not files:
+            return jsonify({"success": False, "error": "No images provided"}), 400
+
+        uploaded_urls = []
+        for file in files:
+            file_extension = os.path.splitext(file.filename)[1] or ".png"
+            unique_filename = f"property-images/{uuid.uuid4().hex}{file_extension}"
+
+            s3_client.upload_fileobj(
+                file,
+                AWS_S3_BUCKET_NAME,
+                unique_filename,
+                ExtraArgs={'ContentType': file.content_type or 'image/png'}
+            )
+
+            # Generate Public Object URL
+            public_url = f"https://{AWS_S3_BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{unique_filename}"
+            uploaded_urls.append(public_url)
+
+        return jsonify({"success": True, "urls": uploaded_urls}), 200
+
+    except NoCredentialsError:
+        return jsonify({"success": False, "error": "AWS Credentials not found"}), 500
     except Exception as e:
-        return Response(json.dumps({"success": False, "error": f"Cloudinary Error: {str(e)}"}), status=500, mimetype='application/json')
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 @app.route('/api/extract-json', methods=['POST'])
 def extract_json():
-    data_files = request.files.getlist('data_images')
-    urls_raw = request.form.get('cloudinary_urls', '[]')
-    
     try:
-        uploaded_urls = json.loads(urls_raw)
-    except Exception:
-        uploaded_urls = []
+        data_images = request.files.getlist('data_images')
+        s3_urls_raw = request.form.get('s3_urls', '[]')
+        s3_urls = json.loads(s3_urls_raw)
 
-    if not data_files or len(data_files) == 0:
-        return Response(json.dumps({"success": False, "error": "No raw detail images provided"}), status=400, mimetype='application/json')
+        if not data_images:
+            return jsonify({"success": False, "error": "No raw detail images provided"}), 400
 
-    try:
         pil_images = []
-        for file in data_files:
-            img_bytes = file.read()
-            pil_images.append(Image.open(io.BytesIO(img_bytes)))
+        for img_file in data_images:
+            pil_images.append(Image.open(img_file))
 
         prompt = f"""
-        You are an expert real estate data extractor. Extract property details combining ALL uploaded images.
-        Fit the extracted details into this exact JSON structure:
-        {json.dumps(get_default_structure())}
+        Extract property details from the provided screenshots into a valid JSON object.
+        Include property attributes (title, price, location, description, amenities, features, etc.).
+        Also include the field 'images' containing this array of S3 image URLs:
+        {json.dumps(s3_urls)}
 
-        STRICT RULES FOR EXTRACTION:
-        1. TITLE: "title_and_description.title" MUST contain ONLY the main dark bold property name.
-        2. DESCRIPTION: "title_and_description.description" MUST contain the entire header line text.
-        3. LOCATION & SUB_LOCALITY:
-           - Extract the specific sub-locality/area. Set "locality" and "sub_locality" to be identical.
-           - LANDMARK & PINCODE: Use web search knowledge to find nearest prominent LANDMARK and correct PINCODE.
-        4. CONSTRUCTION STATUS:
-           - If image mentions "under construction", set "construction_status" to "UNDER_CONSTRUCTION".
-           - Otherwise set it to "READY_TO_MOVE".
-        5. AREA SPECIFICATIONS (SQFT): Extract numeric sqft value if visible.
-        6. Return ONLY raw JSON string without markdown wrappers.
+        Return strictly valid JSON only without markdown code blocks.
         """
 
-        raw_json_resp = call_gemini_rest_api(pil_images, prompt)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content([prompt, *pil_images])
         
-        clean_json_str = raw_json_resp.strip()
-        if clean_json_str.startswith("```json"):
-            clean_json_str = clean_json_str[7:]
-        if clean_json_str.startswith("```"):
-            clean_json_str = clean_json_str[3:]
-        if clean_json_str.endswith("```"):
-            clean_json_str = clean_json_str[:-3]
+        cleaned_text = response.text.replace("```json", "").replace("```", "").strip()
+        parsed_json = json.loads(cleaned_text)
 
-        extracted_json = json.loads(clean_json_str.strip())
-        final_data = apply_custom_logic(extracted_json, uploaded_urls)
-
-        template = get_default_structure()
-        ordered_output = {}
-        for key in template.keys():
-            if key in final_data:
-                ordered_output[key] = final_data[key]
-            else:
-                ordered_output[key] = template[key]
-
-        return Response(json.dumps({"success": True, "data": ordered_output}), status=200, mimetype='application/json')
+        return jsonify({"success": True, "data": parsed_json}), 200
 
     except Exception as e:
-        return Response(json.dumps({"success": False, "error": f"Extraction Failed: {str(e)}"}), status=500, mimetype='application/json')
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 @app.route('/api/submit-to-db', methods=['POST'])
 def submit_to_db():
     try:
-        collection = get_mongo_collection()
-        data = request.get_json()
-        raw_json_str = data.get("json_data", "")
+        body = request.get_json()
+        raw_json_str = body.get('json_data', '')
 
         if not raw_json_str:
-            return jsonify({"success": False, "error": "JSON data field is empty!"}), 400
+            return jsonify({"success": False, "error": "JSON data is required"}), 400
 
         parsed_data = json.loads(raw_json_str)
 
@@ -368,7 +137,7 @@ def submit_to_db():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-                
