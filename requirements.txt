@@ -2,7 +2,7 @@ Flask
 flask-cors
 Pillow
 requests
-cloudinary
+boto3
 pymongo
 google-generativeai
 gunicorn
