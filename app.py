@@ -199,10 +199,10 @@ def call_gemini_rest_api(pil_images, prompt):
         response_mime_type="application/json"
     )
 
-    last_err = None
-    # Corrected model list for google-genai SDK
-    models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash"]
+    # Working active models list (Deprecated models removed)
+    models_to_try = ["gemini-2.5-flash", "gemini-1.5-flash"]
 
+    last_err = None
     for model_name in models_to_try:
         try:
             response = client.models.generate_content(
@@ -334,4 +334,4 @@ def submit_to_db():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-          
+      
