@@ -2,14 +2,14 @@ import os
 import json
 import time
 import io
+import base64
+import requests
 from flask import Flask, request, Response, render_template, jsonify
 from flask_cors import CORS
 from PIL import Image
 import cloudinary
 import cloudinary.uploader
 from pymongo import MongoClient
-from google import genai
-from google.genai import types
 
 app = Flask(__name__)
 CORS(app)
@@ -18,9 +18,9 @@ app.json.sort_keys = False
 
 # Cloudinary Config
 cloudinary.config(
-  cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME"),
-  api_key = os.environ.get("CLOUDINARY_API_KEY"),
-  api_secret = os.environ.get("CLOUDINARY_API_SECRET")
+    cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.environ.get("CLOUDINARY_API_KEY"),
+    api_secret=os.environ.get("CLOUDINARY_API_SECRET")
 )
 
 # MongoDB Config
@@ -33,8 +33,6 @@ def get_mongo_collection():
         raise Exception("MONGO_URI environment variable properly set nahi hai Render par!")
     client = MongoClient(MONGO_URI)
     return client[DB_NAME][COLLECTION_NAME]
-
-API_KEY = os.environ.get("GEMINI_API_KEY")
 
 DEFAULT_AMENITIES = ["LIFT", "SECURITY", "POWER_BACKUP", "PARKING"]
 
@@ -188,34 +186,51 @@ def apply_custom_logic(data, uploaded_urls):
 
     return data
 
+# DIRECT REST API (NO SDK DEPENDENCY AT ALL)
 def call_gemini_rest_api(pil_images, prompt):
-    if not API_KEY:
-        raise Exception("GEMINI_API_KEY environment variable set nahi hai!")
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise Exception("GEMINI_API_KEY environment variable set nahi hai Render par!")
 
-    client = genai.Client(api_key=API_KEY)
-    contents = [prompt] + pil_images
+    # Standard endpoints to try directly via REST
+    models_to_try = ["gemini-1.5-flash", "gemini-1.5-pro"]
+    
+    parts = [{"text": prompt}]
+    for img in pil_images:
+        buffered = io.BytesIO()
+        img.save(buffered, format="JPEG")
+        img_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+        parts.append({
+            "inline_data": {
+                "mime_type": "image/jpeg",
+                "data": img_b64
+            }
+        })
 
-    config = types.GenerateContentConfig(
-        response_mime_type="application/json"
-    )
+    payload = {
+        "contents": [{"parts": parts}],
+        "generationConfig": {
+            "responseMimeType": "application/json"
+        }
+    }
 
-    # Working active models list (Deprecated models removed)
-    models_to_try = ["gemini-2.5-flash", "gemini-1.5-flash"]
-
-    last_err = None
+    last_error = ""
     for model_name in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
         try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=contents,
-                config=config,
-            )
-            return response.text
+            res = requests.post(url, json=payload, timeout=30)
+            res_data = res.json()
+            
+            if res.status_code == 200:
+                return res_data['candidates'][0]['content']['parts'][0]['text']
+            else:
+                last_error = res_data.get('error', {}).get('message', res.text)
         except Exception as e:
-            last_err = str(e)
-            time.sleep(1)
+            last_error = str(e)
+            
+        time.sleep(1)
 
-    raise Exception(f"Gemini API Error: {last_err}")
+    raise Exception(f"Gemini API REST Error: {last_error}")
 
 @app.route('/')
 def home():
@@ -334,4 +349,3 @@ def submit_to_db():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-      
