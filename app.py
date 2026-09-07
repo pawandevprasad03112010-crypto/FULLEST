@@ -186,14 +186,18 @@ def apply_custom_logic(data, uploaded_urls):
 
     return data
 
-# DIRECT REST API (NO SDK DEPENDENCY AT ALL)
+# DIRECT REST API (WITH ACTIVE MODELS LIST)
 def call_gemini_rest_api(pil_images, prompt):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise Exception("GEMINI_API_KEY environment variable set nahi hai Render par!")
 
-    # Standard endpoints to try directly via REST
-    models_to_try = ["gemini-1.5-flash", "gemini-1.5-pro"]
+    # Updated active models list
+    models_to_try = [
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-2.0-flash"
+    ]
     
     parts = [{"text": prompt}]
     for img in pil_images:
@@ -349,3 +353,4 @@ def submit_to_db():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+    
