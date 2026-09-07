@@ -16,7 +16,7 @@ CORS(app)
 
 app.json.sort_keys = False
 
-# Cloudinary Config (Strictly from Environment Variables)
+# Cloudinary Config
 cloudinary.config(
   cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME"),
   api_key = os.environ.get("CLOUDINARY_API_KEY"),
@@ -200,8 +200,8 @@ def call_gemini_rest_api(pil_images, prompt):
     )
 
     last_err = None
-    # Model fallback order for reliability
-    models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+    # Corrected model list for google-genai SDK
+    models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash"]
 
     for model_name in models_to_try:
         try:
@@ -213,7 +213,7 @@ def call_gemini_rest_api(pil_images, prompt):
             return response.text
         except Exception as e:
             last_err = str(e)
-            time.sleep(2)
+            time.sleep(1)
 
     raise Exception(f"Gemini API Error: {last_err}")
 
@@ -257,7 +257,6 @@ def extract_json():
     try:
         pil_images = []
         for file in data_files:
-            # Safe BytesIO conversion for memory stream reading
             img_bytes = file.read()
             pil_images.append(Image.open(io.BytesIO(img_bytes)))
 
@@ -281,7 +280,6 @@ def extract_json():
 
         raw_json_resp = call_gemini_rest_api(pil_images, prompt)
         
-        # Strip markdown format if present
         clean_json_str = raw_json_resp.strip()
         if clean_json_str.startswith("```json"):
             clean_json_str = clean_json_str[7:]
@@ -336,4 +334,4 @@ def submit_to_db():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-            
+          
