@@ -186,16 +186,20 @@ def apply_custom_logic(data, uploaded_urls):
 
     return data
 
-# DIRECT REST API (WITH RETRY & FALLBACK MODELS)
+# REST API WITH ALL GEMINI MODELS FALLBACK
 def call_gemini_rest_api(pil_images, prompt):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise Exception("GEMINI_API_KEY environment variable set nahi hai Render par!")
 
-    # Stable and active Gemini Models
+    # Complete list of available Gemini models to try one-by-one
     models_to_try = [
+        "gemini-2.5-flash",
         "gemini-1.5-flash",
-        "gemini-1.5-pro"
+        "gemini-2.0-flash",
+        "gemini-2.5-pro",
+        "gemini-1.5-pro",
+        "gemini-3.6-flash"
     ]
     
     parts = [{"text": prompt}]
@@ -218,33 +222,37 @@ def call_gemini_rest_api(pil_images, prompt):
     }
 
     last_error = ""
-    # Try models one by one
+    # Loop over all available models
     for model_name in models_to_try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+        params = {"key": api_key}
         
-        # Retry up to 3 times for temporary load/high demand errors (503/429)
-        max_retries = 3
+        # Maximum 2 retries per model in case of temporary rate limit or 503 load issue
+        max_retries = 2
         for attempt in range(max_retries):
             try:
-                res = requests.post(url, json=payload, timeout=35)
+                res = requests.post(url, params=params, json=payload, timeout=35)
                 res_data = res.json()
                 
                 if res.status_code == 200:
                     return res_data['candidates'][0]['content']['parts'][0]['text']
                 
-                # Check for rate limit or high demand error
+                if 'error' in res_data:
+                    last_error = res_data['error'].get('message', res.text)
+                else:
+                    last_error = res.text
+
+                # Retry for rate limits / high demand before trying next model
                 if res.status_code in [429, 503]:
-                    last_error = res_data.get('error', {}).get('message', res.text)
-                    time.sleep(2 ** attempt)  # Wait 1s, 2s, 4s before retrying
+                    time.sleep(2)
                     continue
                 else:
-                    last_error = res_data.get('error', {}).get('message', res.text)
-                    break  # Other errors (e.g. 400 Bad Request), switch model
+                    break # Model Not Found (404) or bad request: jump to next model
             except Exception as e:
                 last_error = str(e)
-                time.sleep(2)
+                time.sleep(1)
 
-    raise Exception(f"Gemini API REST Error: {last_error}")
+    raise Exception(f"Gemini API Error (All Models Failed): {last_error}")
 
 @app.route('/')
 def home():
@@ -363,4 +371,4 @@ def submit_to_db():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-            
+                
