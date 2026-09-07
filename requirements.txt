@@ -4,5 +4,5 @@ Pillow
 requests
 cloudinary
 pymongo
-google-genai
+google-generativeai
 gunicorn
