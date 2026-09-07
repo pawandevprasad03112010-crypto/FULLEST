@@ -1,3 +1,4 @@
+
 import os
 import json
 import time
@@ -194,9 +195,7 @@ def call_gemini_rest_api(pil_images, prompt):
 
     # Updated active models list
     models_to_try = [
-        "gemini-2.5-flash",
-        "gemini-2.5-pro",
-        "gemini-2.0-flash"
+        "gemini-3.6-flash"
     ]
     
     parts = [{"text": prompt}]
