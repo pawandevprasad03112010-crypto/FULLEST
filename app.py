@@ -1,7 +1,6 @@
 import os
 import json
 import time
-import base64
 import io
 from flask import Flask, request, Response, render_template, jsonify
 from flask_cors import CORS
@@ -17,11 +16,11 @@ CORS(app)
 
 app.json.sort_keys = False
 
-# Cloudinary Config: Fetch strictly from Environment Variables
+# Cloudinary Config (Strictly from Environment Variables)
 cloudinary.config(
-    cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME"),
-    api_key = os.environ.get("CLOUDINARY_API_KEY"),
-    api_secret = os.environ.get("CLOUDINARY_API_SECRET")
+  cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME"),
+  api_key = os.environ.get("CLOUDINARY_API_KEY"),
+  api_secret = os.environ.get("CLOUDINARY_API_SECRET")
 )
 
 # MongoDB Config
@@ -191,7 +190,7 @@ def apply_custom_logic(data, uploaded_urls):
 
 def call_gemini_rest_api(pil_images, prompt):
     if not API_KEY:
-        raise Exception("GEMINI_API_KEY environment variable missing")
+        raise Exception("GEMINI_API_KEY environment variable set nahi hai!")
 
     client = genai.Client(api_key=API_KEY)
     contents = [prompt] + pil_images
@@ -201,19 +200,22 @@ def call_gemini_rest_api(pil_images, prompt):
     )
 
     last_err = None
-    for attempt in range(3):
+    # Model fallback order for reliability
+    models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+
+    for model_name in models_to_try:
         try:
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model=model_name,
                 contents=contents,
                 config=config,
             )
             return response.text
         except Exception as e:
             last_err = str(e)
-            time.sleep(5 * (attempt + 1))
+            time.sleep(2)
 
-    raise Exception(f"Failed after retries: {last_err}")
+    raise Exception(f"Gemini API Error: {last_err}")
 
 @app.route('/')
 def home():
@@ -232,13 +234,12 @@ def upload_cloudinary():
     urls = []
     try:
         for file in uploaded_files:
-            # Buffer reading to avoid stream length issues
             file_bytes = file.read()
             upload_result = cloudinary.uploader.upload(file_bytes, folder="processed_images")
             urls.append(upload_result['secure_url'])
         return Response(json.dumps({"success": True, "urls": urls}), status=200, mimetype='application/json')
     except Exception as e:
-        return Response(json.dumps({"success": False, "error": str(e)}), status=500, mimetype='application/json')
+        return Response(json.dumps({"success": False, "error": f"Cloudinary Error: {str(e)}"}), status=500, mimetype='application/json')
 
 @app.route('/api/extract-json', methods=['POST'])
 def extract_json():
@@ -256,7 +257,9 @@ def extract_json():
     try:
         pil_images = []
         for file in data_files:
-            pil_images.append(Image.open(file.stream))
+            # Safe BytesIO conversion for memory stream reading
+            img_bytes = file.read()
+            pil_images.append(Image.open(io.BytesIO(img_bytes)))
 
         prompt = f"""
         You are an expert real estate data extractor. Extract property details combining ALL uploaded images.
@@ -277,7 +280,17 @@ def extract_json():
         """
 
         raw_json_resp = call_gemini_rest_api(pil_images, prompt)
-        extracted_json = json.loads(raw_json_resp)
+        
+        # Strip markdown format if present
+        clean_json_str = raw_json_resp.strip()
+        if clean_json_str.startswith("```json"):
+            clean_json_str = clean_json_str[7:]
+        if clean_json_str.startswith("```"):
+            clean_json_str = clean_json_str[3:]
+        if clean_json_str.endswith("```"):
+            clean_json_str = clean_json_str[:-3]
+
+        extracted_json = json.loads(clean_json_str.strip())
         final_data = apply_custom_logic(extracted_json, uploaded_urls)
 
         template = get_default_structure()
@@ -323,4 +336,4 @@ def submit_to_db():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-  
+            
