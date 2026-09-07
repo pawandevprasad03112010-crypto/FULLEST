@@ -12,22 +12,19 @@ from PIL import Image
 app = Flask(__name__)
 CORS(app)
 
-# AWS S3 Configuration
-AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "AKIA32VVAONMXVWBXOPE").strip()
-AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "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").strip()
+# Fetch strictly from Render Environment Variables (strip extra whitespaces)
+AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "").strip()
+AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "").strip()
 AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1").strip()
 AWS_S3_BUCKET_NAME = os.environ.get("AWS_S3_BUCKET_NAME", "property-images-estatex-1").strip()
 
-# Explicit S3 Client with Signature Version 4 & Virtual Addressing
+# Explicit S3 Client configuration using Signature Version 4
 s3_client = boto3.client(
     's3',
     aws_access_key_id=AWS_ACCESS_KEY_ID,
     aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
     region_name=AWS_REGION,
-    config=Config(
-        signature_version='s3v4',
-        s3={'addressing_style': 'virtual'}
-    )
+    config=Config(signature_version='s3v4')
 )
 
 # MongoDB Setup
@@ -62,7 +59,7 @@ def upload_s3():
             file_extension = os.path.splitext(file.filename)[1] or ".png"
             unique_filename = f"property-images/{uuid.uuid4().hex}{file_extension}"
 
-            # Direct put_object call to prevent signature encoding mismatches
+            # Direct binary put_object call
             s3_client.put_object(
                 Bucket=AWS_S3_BUCKET_NAME,
                 Key=unique_filename,
@@ -70,7 +67,7 @@ def upload_s3():
                 ContentType=file.content_type or 'image/png'
             )
 
-            # Generate Public Object URL
+            # Public Object URL
             public_url = f"https://{AWS_S3_BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{unique_filename}"
             uploaded_urls.append(public_url)
 
