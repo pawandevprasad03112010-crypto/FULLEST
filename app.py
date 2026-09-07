@@ -17,11 +17,11 @@ CORS(app)
 
 app.json.sort_keys = False
 
-# Cloudinary Config
+# Cloudinary Config: Fetch strictly from Environment Variables
 cloudinary.config(
-  cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME", "pfmjg7ip"),
-  api_key = os.environ.get("CLOUDINARY_API_KEY", "368463435529631"),
-  api_secret = os.environ.get("CLOUDINARY_API_SECRET", "")
+    cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME"),
+    api_key = os.environ.get("CLOUDINARY_API_KEY"),
+    api_secret = os.environ.get("CLOUDINARY_API_SECRET")
 )
 
 # MongoDB Config
@@ -193,9 +193,7 @@ def call_gemini_rest_api(pil_images, prompt):
     if not API_KEY:
         raise Exception("GEMINI_API_KEY environment variable missing")
 
-    # Official SDK client instance
     client = genai.Client(api_key=API_KEY)
-    
     contents = [prompt] + pil_images
 
     config = types.GenerateContentConfig(
@@ -205,7 +203,6 @@ def call_gemini_rest_api(pil_images, prompt):
     last_err = None
     for attempt in range(3):
         try:
-            # Using official gemini-2.5-flash model via SDK
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=contents,
@@ -235,7 +232,9 @@ def upload_cloudinary():
     urls = []
     try:
         for file in uploaded_files:
-            upload_result = cloudinary.uploader.upload(file.stream, folder="processed_images")
+            # Buffer reading to avoid stream length issues
+            file_bytes = file.read()
+            upload_result = cloudinary.uploader.upload(file_bytes, folder="processed_images")
             urls.append(upload_result['secure_url'])
         return Response(json.dumps({"success": True, "urls": urls}), status=200, mimetype='application/json')
     except Exception as e:
