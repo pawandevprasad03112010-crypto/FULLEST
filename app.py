@@ -5,7 +5,6 @@ from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import boto3
 from botocore.config import Config
-from botocore.exceptions import NoCredentialsError
 from pymongo import MongoClient
 import google.generativeai as genai
 from PIL import Image
@@ -13,19 +12,22 @@ from PIL import Image
 app = Flask(__name__)
 CORS(app)
 
-# AWS S3 Configuration (with .strip() to avoid space issues and signature config)
+# AWS S3 Configuration
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "AKIA32VVAONMXVWBXOPE").strip()
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "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").strip()
 AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1").strip()
 AWS_S3_BUCKET_NAME = os.environ.get("AWS_S3_BUCKET_NAME", "property-images-estatex-1").strip()
 
-# Signature version s3v4 specifies correct hashing for keys with special characters
+# Explicit S3 Client with Signature Version 4 & Virtual Addressing
 s3_client = boto3.client(
     's3',
     aws_access_key_id=AWS_ACCESS_KEY_ID,
     aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
     region_name=AWS_REGION,
-    config=Config(signature_version='s3v4')
+    config=Config(
+        signature_version='s3v4',
+        s3={'addressing_style': 'virtual'}
+    )
 )
 
 # MongoDB Setup
@@ -60,11 +62,12 @@ def upload_s3():
             file_extension = os.path.splitext(file.filename)[1] or ".png"
             unique_filename = f"property-images/{uuid.uuid4().hex}{file_extension}"
 
-            s3_client.upload_fileobj(
-                file,
-                AWS_S3_BUCKET_NAME,
-                unique_filename,
-                ExtraArgs={'ContentType': file.content_type or 'image/png'}
+            # Direct put_object call to prevent signature encoding mismatches
+            s3_client.put_object(
+                Bucket=AWS_S3_BUCKET_NAME,
+                Key=unique_filename,
+                Body=file.read(),
+                ContentType=file.content_type or 'image/png'
             )
 
             # Generate Public Object URL
@@ -73,8 +76,6 @@ def upload_s3():
 
         return jsonify({"success": True, "urls": uploaded_urls}), 200
 
-    except NoCredentialsError:
-        return jsonify({"success": False, "error": "AWS Credentials not found"}), 500
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
