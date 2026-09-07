@@ -4,6 +4,7 @@ import uuid
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import boto3
+from botocore.config import Config
 from botocore.exceptions import NoCredentialsError
 from pymongo import MongoClient
 import google.generativeai as genai
@@ -12,17 +13,19 @@ from PIL import Image
 app = Flask(__name__)
 CORS(app)
 
-# AWS S3 Configuration
-AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "AKIA32VVAONMXVWBXOPE")
-AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "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")
-AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1")
-AWS_S3_BUCKET_NAME = os.environ.get("AWS_S3_BUCKET_NAME", "property-images-estatex-1")
+# AWS S3 Configuration (with .strip() to avoid space issues and signature config)
+AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "AKIA32VVAONMXVWBXOPE").strip()
+AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "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").strip()
+AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1").strip()
+AWS_S3_BUCKET_NAME = os.environ.get("AWS_S3_BUCKET_NAME", "property-images-estatex-1").strip()
 
+# Signature version s3v4 specifies correct hashing for keys with special characters
 s3_client = boto3.client(
     's3',
     aws_access_key_id=AWS_ACCESS_KEY_ID,
     aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-    region_name=AWS_REGION
+    region_name=AWS_REGION,
+    config=Config(signature_version='s3v4')
 )
 
 # MongoDB Setup
@@ -37,7 +40,7 @@ collection = db[COLLECTION_NAME]
 # Gemini AI Setup
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+    genai.configure(api_key=GEMINI_API_KEY.strip())
 
 
 @app.route('/')
