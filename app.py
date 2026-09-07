@@ -37,27 +37,12 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY.strip())
 
-
-def get_working_model():
-    """Fetches real models available for your API key, avoiding invalid string errors"""
-    try:
-        available = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                available.append(m.name)
-        
-        # Priority fallback order among VALID models
-        preferred = ['models/gemini-2.5-flash', 'models/gemini-2.0-flash', 'models/gemini-1.5-flash']
-        for pref in preferred:
-            if pref in available:
-                return pref.replace('models/', '')
-        
-        if available:
-            return available[0].replace('models/', '')
-    except Exception:
-        pass
-    
-    return 'gemini-2.5-flash'
+# Recommended models list ordered by priority
+TARGET_MODELS = [
+    'gemini-3.6-flash',
+    'gemini-3.6-pro',
+    'gemini-2.0-flash'
+]
 
 
 @app.route('/')
@@ -110,17 +95,33 @@ def extract_json():
         Include property attributes (title, price, location, description, amenities, features, etc.).
         Also include the field 'images' containing this array of S3 image URLs:
         {json.dumps(s3_urls)}
+        
+        Return strictly valid JSON only without markdown code blocks.
         """
 
-        model_name = get_working_model()
-        model = genai.GenerativeModel(model_name)
+        response_text = None
+        last_error = None
 
-        response = model.generate_content([prompt, *pil_images])
+        # Try active recommended models
+        for model_name in TARGET_MODELS:
+            try:
+                model = genai.GenerativeModel(model_name)
+                response = model.generate_content([prompt, *pil_images])
+                
+                if response and response.text:
+                    response_text = response.text
+                    break
+            except Exception as model_err:
+                last_error = f"[{model_name}]: {str(model_err)}"
+                continue
 
-        if not response or not response.text:
-            return jsonify({"success": False, "error": "AI returned empty response"}), 500
+        if not response_text:
+            return jsonify({
+                "success": False, 
+                "error": f"Extraction failed on all models. Last Error: {last_error}"
+            }), 500
 
-        cleaned_text = response.text.replace("```json", "").replace("```", "").strip()
+        cleaned_text = response_text.replace("```json", "").replace("```", "").strip()
         parsed_json = json.loads(cleaned_text)
 
         return jsonify({"success": True, "data": parsed_json}), 200
@@ -159,4 +160,4 @@ def submit_to_db():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-                        
+    
