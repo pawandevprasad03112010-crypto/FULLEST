@@ -202,7 +202,7 @@
       font-size: 15px;
     }
 
-    /* Cloudinary URL List */
+    /* AWS S3 URL List */
     #urlListSection {
       display: none;
       margin-top: 15px;
@@ -243,7 +243,6 @@
       display: none;
     }
 
-    /* MongoDB Badge & Textarea */
     .badge-box {
       background-color: #e6f7f5;
       color: #0f766e;
@@ -307,12 +306,12 @@
     <div class="processed-heading">Processed Photos Preview</div>
     <div class="processed-grid" id="processedGrid"></div>
     
-    <button class="btn-green" id="getCloudinaryUrlsBtn">Get All Cloudinary URLs</button>
+    <button class="btn-green" id="getS3UrlsBtn">Get All AWS S3 URLs</button>
     <div id="statusMsg" class="status-msg"></div>
 
-    <!-- Generated Cloudinary URLs Box -->
+    <!-- Generated AWS S3 URLs Box -->
     <div id="urlListSection">
-      <div style="font-weight:bold; margin: 15px 0 10px 0; font-size:14px; color:#374151;">Generated Cloudinary URLs:</div>
+      <div style="font-weight:bold; margin: 15px 0 10px 0; font-size:14px; color:#374151;">Generated AWS S3 URLs:</div>
       <div id="urlRowsContainer"></div>
       <button class="btn-purple" id="copyAllUrlsBtn">Copy All URLs</button>
     </div>
@@ -361,7 +360,7 @@
     
     const processedSection = document.getElementById('processedSection');
     const processedGrid = document.getElementById('processedGrid');
-    const getCloudinaryUrlsBtn = document.getElementById('getCloudinaryUrlsBtn');
+    const getS3UrlsBtn = document.getElementById('getS3UrlsBtn');
     const statusMsg = document.getElementById('statusMsg');
     
     const urlListSection = document.getElementById('urlListSection');
@@ -381,7 +380,7 @@
     let cropperInstances = [];
     let wmPositions = [];
     let processedBlobs = [];
-    let uploadedCloudinaryUrls = [];
+    let uploadedS3Urls = [];
 
     const readFileAsDataURL = (file) => {
       return new Promise((resolve) => {
@@ -592,28 +591,28 @@
       }
     });
 
-    // STEP 1: Upload to Cloudinary
-    getCloudinaryUrlsBtn.addEventListener('click', async () => {
+    // STEP 1: Upload to AWS S3
+    getS3UrlsBtn.addEventListener('click', async () => {
       if (processedBlobs.length === 0) return alert('No processed photos to upload!');
 
-      getCloudinaryUrlsBtn.disabled = true;
-      getCloudinaryUrlsBtn.innerText = 'Uploading to Cloudinary...';
-      statusMsg.innerText = 'Uploading to Cloudinary...';
+      getS3UrlsBtn.disabled = true;
+      getS3UrlsBtn.innerText = 'Uploading to AWS S3...';
+      statusMsg.innerText = 'Uploading to AWS S3...';
 
       const formData = new FormData();
       processedBlobs.forEach((blob, i) => {
-        formData.append('images', blob, `photo_${String(i + 1).padStart(3, '0')}.png`);
+        formData.append('images', blob, `photo_${Date.now()}_${String(i + 1).padStart(3, '0')}.png`);
       });
 
       try {
-        const res = await fetch('/api/upload-cloudinary', { method: 'POST', body: formData });
+        const res = await fetch('/api/upload-s3', { method: 'POST', body: formData });
         const resData = await res.json();
 
         if (resData.success && resData.urls) {
-          uploadedCloudinaryUrls = resData.urls;
+          uploadedS3Urls = resData.urls;
           urlRowsContainer.innerHTML = '';
           
-          uploadedCloudinaryUrls.forEach((url, i) => {
+          uploadedS3Urls.forEach((url, i) => {
             const row = document.createElement('div');
             row.className = 'url-row';
             row.innerHTML = `
@@ -632,7 +631,7 @@
             urlRowsContainer.appendChild(row);
           });
 
-          statusMsg.innerText = 'All URLs Generated Successfully!';
+          statusMsg.innerText = 'All AWS S3 URLs Generated Successfully!';
           urlListSection.style.display = 'block';
           aiExtractSection.style.display = 'block';
           aiExtractSection.scrollIntoView({ behavior: 'smooth' });
@@ -641,17 +640,17 @@
           statusMsg.innerText = 'Upload Failed!';
         }
       } catch (err) {
-        alert('Cloudinary Upload Error!');
+        alert('AWS S3 Upload Error!');
         statusMsg.innerText = 'Upload Failed!';
       } finally {
-        getCloudinaryUrlsBtn.disabled = false;
-        getCloudinaryUrlsBtn.innerText = 'Get All Cloudinary URLs';
+        getS3UrlsBtn.disabled = false;
+        getS3UrlsBtn.innerText = 'Get All AWS S3 URLs';
       }
     });
 
     copyAllUrlsBtn.addEventListener('click', () => {
-      if (uploadedCloudinaryUrls.length === 0) return;
-      navigator.clipboard.writeText(uploadedCloudinaryUrls.join('\n')).then(() => {
+      if (uploadedS3Urls.length === 0) return;
+      navigator.clipboard.writeText(uploadedS3Urls.join('\n')).then(() => {
         copyAllUrlsBtn.innerText = 'All URLs Copied!';
         copyAllUrlsBtn.style.background = '#10b981';
         setTimeout(() => { copyAllUrlsBtn.innerText = 'Copy All URLs'; copyAllUrlsBtn.style.background = '#8b5cf6'; }, 2000);
@@ -671,7 +670,7 @@
       for (let i = 0; i < dataFiles.length; i++) {
         formData.append('data_images', dataFiles[i]);
       }
-      formData.append('cloudinary_urls', JSON.stringify(uploadedCloudinaryUrls));
+      formData.append('s3_urls', JSON.stringify(uploadedS3Urls));
 
       try {
         const res = await fetch('/api/extract-json', { method: 'POST', body: formData });
@@ -733,4 +732,3 @@
   </script>
 </body>
 </html>
-          
