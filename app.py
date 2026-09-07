@@ -1,4 +1,3 @@
-
 import os
 import json
 import time
@@ -187,15 +186,16 @@ def apply_custom_logic(data, uploaded_urls):
 
     return data
 
-# DIRECT REST API (WITH ACTIVE MODELS LIST)
+# DIRECT REST API (WITH RETRY & FALLBACK MODELS)
 def call_gemini_rest_api(pil_images, prompt):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise Exception("GEMINI_API_KEY environment variable set nahi hai Render par!")
 
-    # Updated active models list
+    # Stable and active Gemini Models
     models_to_try = [
-        "gemini-3.6-flash"
+        "gemini-1.5-flash",
+        "gemini-1.5-pro"
     ]
     
     parts = [{"text": prompt}]
@@ -218,20 +218,31 @@ def call_gemini_rest_api(pil_images, prompt):
     }
 
     last_error = ""
+    # Try models one by one
     for model_name in models_to_try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-        try:
-            res = requests.post(url, json=payload, timeout=30)
-            res_data = res.json()
-            
-            if res.status_code == 200:
-                return res_data['candidates'][0]['content']['parts'][0]['text']
-            else:
-                last_error = res_data.get('error', {}).get('message', res.text)
-        except Exception as e:
-            last_error = str(e)
-            
-        time.sleep(1)
+        
+        # Retry up to 3 times for temporary load/high demand errors (503/429)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                res = requests.post(url, json=payload, timeout=35)
+                res_data = res.json()
+                
+                if res.status_code == 200:
+                    return res_data['candidates'][0]['content']['parts'][0]['text']
+                
+                # Check for rate limit or high demand error
+                if res.status_code in [429, 503]:
+                    last_error = res_data.get('error', {}).get('message', res.text)
+                    time.sleep(2 ** attempt)  # Wait 1s, 2s, 4s before retrying
+                    continue
+                else:
+                    last_error = res_data.get('error', {}).get('message', res.text)
+                    break  # Other errors (e.g. 400 Bad Request), switch model
+            except Exception as e:
+                last_error = str(e)
+                time.sleep(2)
 
     raise Exception(f"Gemini API REST Error: {last_error}")
 
@@ -352,4 +363,4 @@ def submit_to_db():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-    
+            
