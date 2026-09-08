@@ -5,6 +5,8 @@ import boto3
 from pymongo import MongoClient
 from google import genai
 from google.genai import types
+from PIL import Image
+import io
 
 app = Flask(__name__)
 
@@ -134,32 +136,33 @@ def extract_json():
         ]
 
         for file in data_files:
-            image_bytes = file.read()
+            # 🟢 RAM बचाने के लिए इमेज को रीसाइज और कॉम्प्रेस करना
+            img = Image.open(file.stream)
+            img = img.convert("RGB")
+            img.thumbnail((1024, 1024))
+            
+            byte_arr = io.BytesIO()
+            img.save(byte_arr, format='JPEG', quality=80)
+            image_bytes = byte_arr.getvalue()
+
             contents.append(
                 types.Part.from_bytes(
                     data=image_bytes,
-                    mime_type=file.content_type
+                    mime_type='image/jpeg'
                 )
             )
 
-        # 🔄 Comprehensive Gemini Model Fallback List (Including 3.6 and all other versions)
+        # 🔄 Gemini Models Fallback List
         models_to_try = [
             'gemini-3.8-flash',
             'gemini-3.7-flash',
             'gemini-3.6-flash',
             'gemini-3.5-flash',
-            'gemini-3.5-flash-lite',
-            'gemini-3.1-pro-preview',
-            'gemini-3-flash-preview',
-            'gemini-3.1-flash-lite',
             'gemini-2.5-flash',
-            'gemini-2.5-pro',
-            'gemini-2.5-flash-lite',
             'gemini-2.0-flash',
             'gemini-1.5-flash',
             'gemini-1.5-pro',
-            'gemini-1.5-flash-latest',
-            'gemini-1.5-pro-latest'
+            'gemini-1.5-flash-latest'
         ]
         
         response = None
@@ -183,7 +186,6 @@ def extract_json():
         cleaned_text = response.text.replace("```json", "").replace("```", "").strip()
         parsed_json = json.loads(cleaned_text)
 
-        # Enforce exact JSON key sequence
         final_ordered_json = enforce_exact_json_structure(parsed_json, s3_urls)
 
         return jsonify({"success": True, "data": final_ordered_json}), 200
