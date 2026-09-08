@@ -13,6 +13,9 @@ from google.genai import types
 app = Flask(__name__)
 CORS(app)
 
+# Flask को डिक्शनरी कीज़ ऑटो-सॉर्ट करने से रोकने के लिए (तथा क्रम बनाए रखने के लिए)
+app.config['JSON_SORT_KEYS'] = False
+
 # ==========================================
 # AWS Credentials & S3 Settings
 # ==========================================
