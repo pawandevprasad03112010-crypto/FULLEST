@@ -3,18 +3,18 @@ import json
 from flask import Flask, render_template, request, jsonify
 import boto3
 from pymongo import MongoClient
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 app = Flask(__name__)
 
 # --- CONFIGURATIONS ---
-# अपने एनवायरनमेंट वेरिएबल्स या डायरेक्ट क्रेडेंशियल्स यहाँ सेट करें
 MONGO_URI = os.environ.get("MONGO_URI", "your_mongodb_connection_string_here")
 DB_NAME = "property_database"
 COLLECTION_NAME = "properties"
 
-client = MongoClient(MONGO_URI)
-db = client[DB_NAME]
+client_db = MongoClient(MONGO_URI)
+db = client_db[DB_NAME]
 collection = db[COLLECTION_NAME]
 
 # AWS S3 Configuration
@@ -26,8 +26,8 @@ s3_client = boto3.client(
     region_name=os.environ.get("AWS_REGION", "ap-south-1")
 )
 
-# Gemini AI Configuration
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY", "your_gemini_api_key"))
+# Google GenAI Configuration (Using new google-genai SDK)
+ai_client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
 # --- HELPER FUNCTION: Enforce Exact JSON Structure ---
 def enforce_exact_json_structure(data, s3_urls):
@@ -127,29 +127,31 @@ def extract_json():
     s3_urls = json.loads(s3_urls_raw)
 
     try:
-        # इमेज प्रोसेस करने के लिए टेम्परेरी सेव करना या बाइट्स भेजना
-        image_parts = []
-        for file in data_files:
-            image_bytes = file.read()
-            image_parts.append({
-                'mime_type': file.content_type,
-                'data': image_bytes
-            })
-
-        # Gemini Model कॉल करें
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        prompt = (
+        contents = [
             "Extract property details from these images and return strictly a valid JSON object matching "
             "the standard property schema (user_id, category, contact, title_and_description, location, "
             "pricing, specifications, amenities, media, created_at). Do not add any extra text, markdown ticks only if necessary."
+        ]
+
+        for file in data_files:
+            image_bytes = file.read()
+            contents.append(
+                types.Part.from_bytes(
+                    data=image_bytes,
+                    mime_type=file.content_type
+                )
+            )
+
+        # Call Gemini using the new google-genai SDK client
+        response = ai_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=contents
         )
         
-        response = model.generate_content([prompt] + image_parts)
         cleaned_text = response.text.replace("```json", "").replace("```", "").strip()
-        
         parsed_json = json.loads(cleaned_text)
 
-        # स्ट्रक्चर को ऊपर वाले फंक्शन से फॉर्मेट करना ताकि क्रम हमेशा सही रहे
+        # Enforce exact JSON key sequence
         final_ordered_json = enforce_exact_json_structure(parsed_json, s3_urls)
 
         return jsonify({"success": True, "data": final_ordered_json}), 200
@@ -164,8 +166,6 @@ def submit_to_db():
         raw_text = req_data.get('json_data', '')
         
         parsed_data = json.loads(raw_text)
-        
-        # MongoDB में इन्सर्ट करें
         result = collection.insert_one(parsed_data)
         
         return jsonify({
@@ -178,4 +178,4 @@ def submit_to_db():
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
-            
+    
