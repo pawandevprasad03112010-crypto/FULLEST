@@ -7,20 +7,19 @@ from flask_cors import CORS
 import boto3
 from botocore.config import Config
 from pymongo import MongoClient
+from google import genai
+from google.genai import types
 
 app = Flask(__name__)
 CORS(app)
 
 # ==========================================
-# AWS Credentials & Region Settings
+# AWS Credentials & S3 Settings
 # ==========================================
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "").strip()
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "").strip()
 AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1").strip()
 AWS_S3_BUCKET_NAME = os.environ.get("AWS_S3_BUCKET_NAME", "property-images-estatex-1").strip()
-
-# Bedrock Region (Nova Lite is supported in us-east-1)
-BEDROCK_REGION = os.environ.get("BEDROCK_REGION", "us-east-1").strip()
 
 # AWS S3 Client Initialization
 s3_client = boto3.client(
@@ -31,13 +30,11 @@ s3_client = boto3.client(
     config=Config(signature_version='s3v4')
 )
 
-# AWS Bedrock Runtime Client Initialization
-bedrock_runtime = boto3.client(
-    'bedrock-runtime',
-    aws_access_key_id=AWS_ACCESS_KEY_ID,
-    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-    region_name=BEDROCK_REGION
-)
+# ==========================================
+# Google Gemini API Setup
+# ==========================================
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
 # ==========================================
 # MongoDB Database Setup
@@ -91,7 +88,7 @@ def upload_s3():
 
 @app.route('/api/extract-json', methods=['POST'])
 def extract_json():
-    """ Reads property screenshots and extracts JSON using Amazon Nova AI based on all business rules """
+    """ Reads property screenshots and extracts JSON using Google Gemini AI with Automatic Model Fallback """
     try:
         data_images = request.files.getlist('data_images')
         s3_urls_raw = request.form.get('s3_urls', '[]')
@@ -100,24 +97,18 @@ def extract_json():
         if not data_images:
             return jsonify({"success": False, "error": "No property detail images provided"}), 400
 
-        content_items = []
+        contents = []
+        
         for img_file in data_images:
             img_bytes = img_file.read()
-            base64_img = base64.b64encode(img_bytes).decode('utf-8')
-
             mime_type = img_file.content_type or 'image/png'
-            format_type = mime_type.split('/')[-1] if '/' in mime_type else 'png'
-            if format_type == 'jpg':
-                format_type = 'jpeg'
-
-            content_items.append({
-                "image": {
-                    "format": format_type,
-                    "source": {
-                        "bytes": base64_img
-                    }
-                }
-            })
+            
+            contents.append(
+                types.Part.from_bytes(
+                    data=img_bytes,
+                    mime_type=mime_type,
+                )
+            )
 
         # Prompt with strict business rules
         prompt_text = f"""
@@ -232,33 +223,42 @@ def extract_json():
         Return ONLY a raw JSON string without any markdown backticks or extra text.
         """
 
-        content_items.append({"text": prompt_text})
+        full_payload_contents = list(contents)
+        full_payload_contents.append(prompt_text)
 
-        payload = {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": content_items
-                }
-            ],
-            "inferenceConfig": {
-                "maxTokens": 2500,
-                "temperature": 0.1
-            }
-        }
+        # Fallback list containing multiple models
+        gemini_models_to_try = [
+            "gemini-3.5-flash",
+            "gemini-3.1-pro-preview",
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "gemini-2.5-flash-lite",
+            "gemini-2.0-flash"
+        ]
 
-        # Model ID for Nova Lite Cross-Region Inference
-        response = bedrock_runtime.invoke_model(
-            modelId="us.amazon.nova-lite-v1:0",
-            contentType="application/json",
-            accept="application/json",
-            body=json.dumps(payload)
-        )
+        response = None
+        last_error = None
 
-        response_body = json.loads(response.get('body').read())
-        raw_text = response_body['output']['message']['content'][0]['text']
+        for model_name in gemini_models_to_try:
+            try:
+                response = gemini_client.models.generate_content(
+                    model=model_name,
+                    contents=full_payload_contents,
+                    config=types.GenerateContentConfig(
+                        temperature=0.1,
+                        max_output_tokens=2500,
+                    )
+                )
+                if response and response.text:
+                    break
+            except Exception as model_err:
+                last_error = str(model_err)
+                continue
 
-        # Clean JSON String
+        if not response or not response.text:
+            return jsonify({"success": False, "error": f"All Gemini models failed. Last error: {last_error}"}), 500
+
+        raw_text = response.text
         cleaned_text = raw_text.replace("```json", "").replace("```", "").strip()
         parsed_json = json.loads(cleaned_text)
 
@@ -299,4 +299,4 @@ def submit_to_db():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-        
+    
