@@ -1,22 +1,28 @@
 import os
 import json
 import uuid
+import base64
+import requests
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import boto3
 from botocore.config import Config
 from pymongo import MongoClient
-import google.generativeai as genai
-from PIL import Image
 
 app = Flask(__name__)
 CORS(app)
 
+# AWS S3 Configuration
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "").strip()
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "").strip()
 AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1").strip()
 AWS_S3_BUCKET_NAME = os.environ.get("AWS_S3_BUCKET_NAME", "property-images-estatex-1").strip()
 
+# AWS Bedrock Long-Term API Key (Bearer Token)
+AWS_BEARER_TOKEN_BEDROCK = os.environ.get("AWS_BEARER_TOKEN_BEDROCK", "").strip()
+BEDROCK_REGION = os.environ.get("BEDROCK_REGION", "us-east-1").strip()
+
+# AWS S3 Client
 s3_client = boto3.client(
     's3',
     aws_access_key_id=AWS_ACCESS_KEY_ID,
@@ -25,6 +31,7 @@ s3_client = boto3.client(
     config=Config(signature_version='s3v4')
 )
 
+# MongoDB Setup
 MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
 DB_NAME = os.environ.get("DB_NAME", "estatex_db")
 COLLECTION_NAME = os.environ.get("COLLECTION_NAME", "properties")
@@ -32,17 +39,6 @@ COLLECTION_NAME = os.environ.get("COLLECTION_NAME", "properties")
 mongo_client = MongoClient(MONGO_URI)
 db = mongo_client[DB_NAME]
 collection = db[COLLECTION_NAME]
-
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY.strip())
-
-# Recommended models list ordered by priority
-TARGET_MODELS = [
-    'gemini-3.6-flash',
-    'gemini-3.6-pro',
-    'gemini-2.0-flash'
-]
 
 
 @app.route('/')
@@ -88,40 +84,72 @@ def extract_json():
         if not data_images:
             return jsonify({"success": False, "error": "No raw detail images provided"}), 400
 
-        pil_images = [Image.open(img_file) for img_file in data_images]
+        if not AWS_BEARER_TOKEN_BEDROCK:
+            return jsonify({"success": False, "error": "AWS_BEARER_TOKEN_BEDROCK key missing in Environment Variables!"}), 500
 
-        prompt = f"""
+        # Build message payload for Amazon Nova Lite
+        content_items = []
+        for img_file in data_images:
+            img_bytes = img_file.read()
+            base64_img = base64.b64encode(img_bytes).decode('utf-8')
+            mime_type = img_file.content_type or 'image/png'
+            
+            # Format image format (png, jpeg, etc.)
+            format_type = mime_type.split('/')[-1] if '/' in mime_type else 'png'
+
+            content_items.append({
+                "image": {
+                    "format": format_type,
+                    "source": {
+                        "bytes": base64_img
+                    }
+                }
+            })
+
+        prompt_text = f"""
         Extract property details from the provided screenshots into a valid JSON object.
         Include property attributes (title, price, location, description, amenities, features, etc.).
         Also include the field 'images' containing this array of S3 image URLs:
         {json.dumps(s3_urls)}
-        
+
         Return strictly valid JSON only without markdown code blocks.
         """
 
-        response_text = None
-        last_error = None
+        content_items.append({
+            "text": prompt_text
+        })
 
-        # Try active recommended models
-        for model_name in TARGET_MODELS:
-            try:
-                model = genai.GenerativeModel(model_name)
-                response = model.generate_content([prompt, *pil_images])
-                
-                if response and response.text:
-                    response_text = response.text
-                    break
-            except Exception as model_err:
-                last_error = f"[{model_name}]: {str(model_err)}"
-                continue
+        # Amazon Nova Lite Payload
+        payload = {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": content_items
+                }
+            ],
+            "inferenceConfig": {
+                "maxTokens": 2000,
+                "temperature": 0.2
+            }
+        }
 
-        if not response_text:
-            return jsonify({
-                "success": False, 
-                "error": f"Extraction failed on all models. Last Error: {last_error}"
-            }), 500
+        # Amazon Nova Lite Model Endpoint
+        url = f"https://bedrock-runtime.{BEDROCK_REGION}.amazonaws.com/model/amazon.nova-lite-v1:0/invoke"
 
-        cleaned_text = response_text.replace("```json", "").replace("```", "").strip()
+        headers = {
+            "Authorization": f"Bearer {AWS_BEARER_TOKEN_BEDROCK}",
+            "Content-Type": "application/json"
+        }
+
+        response = requests.post(url, headers=headers, json=payload)
+
+        if response.status_code != 200:
+            return jsonify({"success": False, "error": f"Amazon Nova Error: {response.text}"}), response.status_code
+
+        response_json = response.json()
+        raw_text = response_json['output']['message']['content'][0]['text']
+
+        cleaned_text = raw_text.replace("```json", "").replace("```", "").strip()
         parsed_json = json.loads(cleaned_text)
 
         return jsonify({"success": True, "data": parsed_json}), 200
@@ -160,4 +188,3 @@ def submit_to_db():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-    
