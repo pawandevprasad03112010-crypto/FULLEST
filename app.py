@@ -49,6 +49,68 @@ collection = db[COLLECTION_NAME]
 
 
 # ==========================================
+# Helper Function to Enforce Exact JSON Order
+# ==========================================
+def enforce_exact_json_structure(data, s3_urls):
+    """Ensures keys always follow the exact order and structure requested."""
+    return {
+        "user_id": data.get("user_id", "ADMIN"),
+        "posted_by_type": data.get("posted_by_type", "ADMIN"),
+        "category": {
+            "purpose": data.get("category", {}).get("purpose", "BUY"),
+            "property_type": data.get("category", {}).get("property_type", "RESIDENTIAL"),
+            "sub_type": data.get("category", {}).get("sub_type", "FLAT_APARTMENT")
+        },
+        "contact": {
+            "owner_name": data.get("contact", {}).get("owner_name", "ADMIN"),
+            "phone": data.get("contact", {}).get("phone", "na"),
+            "owner_type": data.get("contact", {}).get("owner_type", "AGENT")
+        },
+        "title_and_description": {
+            "title": data.get("title_and_description", {}).get("title", "na"),
+            "description": data.get("title_and_description", {}).get("description", "na")
+        },
+        "location": {
+            "city": data.get("location", {}).get("city", "Kolkata"),
+            "locality": data.get("location", {}).get("locality", "na"),
+            "sub_locality": data.get("location", {}).get("sub_locality", "na"),
+            "landmark": data.get("location", {}).get("landmark", "na"),
+            "pincode": data.get("location", {}).get("pincode", "na"),
+            "state": data.get("location", {}).get("state", "West Bengal"),
+            "full_address": data.get("location", {}).get("full_address", "na")
+        },
+        "pricing": {
+            "price_display": data.get("pricing", {}).get("price_display", "na"),
+            "price_numeric": data.get("pricing", {}).get("price_numeric", "na"),
+            "is_negotiable": data.get("pricing", {}).get("is_negotiable", True)
+        },
+        "specifications": {
+            "bhk_type": data.get("specifications", {}).get("bhk_type", "na"),
+            "bhk_numeric": data.get("specifications", {}).get("bhk_numeric", "na"),
+            "builtup_sqft": data.get("specifications", {}).get("builtup_sqft", "na"),
+            "carpet_sqft": data.get("specifications", {}).get("carpet_sqft", "na"),
+            "super_builtup_sqft": data.get("specifications", {}).get("super_builtup_sqft", "na"),
+            "floor_no": data.get("specifications", {}).get("floor_no", "na"),
+            "total_floors": data.get("specifications", {}).get("total_floors", "na"),
+            "bathrooms": data.get("specifications", {}).get("bathrooms", "na"),
+            "balconies": data.get("specifications", {}).get("balconies", "na"),
+            "furnishing_status": data.get("specifications", {}).get("furnishing_status", "na"),
+            "construction_status": data.get("specifications", {}).get("construction_status", "na"),
+            "facing_direction": data.get("specifications", {}).get("facing_direction", "NORTH WEST"),
+            "property_age": data.get("specifications", {}).get("property_age", "na"),
+            "parking": data.get("specifications", {}).get("parking", "YES"),
+            "ownership_type": data.get("specifications", {}).get("ownership_type", "FREEHOLD")
+        },
+        "amenities": data.get("amenities", []),
+        "media": {
+            "images": data.get("media", {}).get("images", s3_urls),
+            "ai_short_video_url": data.get("media", {}).get("ai_short_video_url", "na")
+        },
+        "created_at": data.get("created_at", "few years")
+    }
+
+
+# ==========================================
 # Routes
 # ==========================================
 
@@ -247,6 +309,7 @@ def extract_json():
                     config=types.GenerateContentConfig(
                         temperature=0.1,
                         max_output_tokens=2500,
+                        response_mime_type="application/json"
                     )
                 )
                 if response and response.text:
@@ -260,9 +323,13 @@ def extract_json():
 
         raw_text = response.text
         cleaned_text = raw_text.replace("```json", "").replace("```", "").strip()
+        
         parsed_json = json.loads(cleaned_text)
 
-        return jsonify({"success": True, "data": parsed_json}), 200
+        # Ensure exact structural order matching user template
+        final_ordered_json = enforce_exact_json_structure(parsed_json, s3_urls)
+
+        return jsonify({"success": True, "data": final_ordered_json}), 200
 
     except Exception as e:
         return jsonify({"success": False, "error": f"Extraction Failed: {str(e)}"}), 500
