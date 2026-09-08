@@ -280,7 +280,7 @@ def extract_json():
           "amenities": [],
           "media": {{
             "images": {json.dumps(s3_urls)},
-            "ai_short_video_url": "na"
+            "ai_short_video_url": ""
           }},
           "created_at": "few years"
         }}
