@@ -1,8 +1,8 @@
 Flask
 flask-cors
+boto3
+botocore
+pymongo
 Pillow
 requests
-boto3
-pymongo
-google-generativeai
 gunicorn
