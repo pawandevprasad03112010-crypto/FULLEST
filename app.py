@@ -26,7 +26,7 @@ s3_client = boto3.client(
     region_name=os.environ.get("AWS_REGION", "ap-south-1")
 )
 
-# Google GenAI Configuration (Using new google-genai SDK)
+# Google GenAI Configuration
 ai_client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
 # --- HELPER FUNCTION: Enforce Exact JSON Structure ---
@@ -142,11 +142,43 @@ def extract_json():
                 )
             )
 
-        # Call Gemini using the new google-genai SDK client
-        response = ai_client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=contents
-        )
+        # 🔄 Comprehensive Gemini Model Fallback List (Including 3.6 and all other versions)
+        models_to_try = [
+            'gemini-3.8-flash',
+            'gemini-3.7-flash',
+            'gemini-3.6-flash',
+            'gemini-3.5-flash',
+            'gemini-3.5-flash-lite',
+            'gemini-3.1-pro-preview',
+            'gemini-3-flash-preview',
+            'gemini-3.1-flash-lite',
+            'gemini-2.5-flash',
+            'gemini-2.5-pro',
+            'gemini-2.5-flash-lite',
+            'gemini-2.0-flash',
+            'gemini-1.5-flash',
+            'gemini-1.5-pro',
+            'gemini-1.5-flash-latest',
+            'gemini-1.5-pro-latest'
+        ]
+        
+        response = None
+        last_error = None
+
+        for model_name in models_to_try:
+            try:
+                response = ai_client.models.generate_content(
+                    model=model_name,
+                    contents=contents
+                )
+                if response and response.text:
+                    break
+            except Exception as err:
+                last_error = err
+                continue
+
+        if not response or not response.text:
+            raise Exception(f"All Gemini models failed. Last error: {str(last_error)}")
         
         cleaned_text = response.text.replace("```json", "").replace("```", "").strip()
         parsed_json = json.loads(cleaned_text)
