@@ -2,7 +2,6 @@ import os
 import json
 import uuid
 import base64
-import requests
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import boto3
@@ -12,14 +11,13 @@ from pymongo import MongoClient
 app = Flask(__name__)
 CORS(app)
 
-# AWS S3 Configuration
+# AWS S3 & Credentials Configuration
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "").strip()
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "").strip()
 AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1").strip()
 AWS_S3_BUCKET_NAME = os.environ.get("AWS_S3_BUCKET_NAME", "property-images-estatex-1").strip()
 
-# AWS Bedrock Long-Term API Key (Bearer Token)
-AWS_BEARER_TOKEN_BEDROCK = os.environ.get("AWS_BEARER_TOKEN_BEDROCK", "").strip()
+# Bedrock Region (Nova Lite Models use us-east-1 or us-west-2)
 BEDROCK_REGION = os.environ.get("BEDROCK_REGION", "us-east-1").strip()
 
 # AWS S3 Client
@@ -29,6 +27,14 @@ s3_client = boto3.client(
     aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
     region_name=AWS_REGION,
     config=Config(signature_version='s3v4')
+)
+
+# AWS Bedrock Runtime Client
+bedrock_runtime = boto3.client(
+    'bedrock-runtime',
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    region_name=BEDROCK_REGION
 )
 
 # MongoDB Setup
@@ -84,14 +90,10 @@ def extract_json():
         if not data_images:
             return jsonify({"success": False, "error": "No raw detail images provided"}), 400
 
-        if not AWS_BEARER_TOKEN_BEDROCK:
-            return jsonify({"success": False, "error": "AWS_BEARER_TOKEN_BEDROCK key missing in Environment Variables!"}), 500
-
         # Build message payload for Amazon Nova Lite
         content_items = []
         for img_file in data_images:
             img_bytes = img_file.read()
-            base64_img = base64.b64encode(img_bytes).decode('utf-8')
             mime_type = img_file.content_type or 'image/png'
             
             # Format image format (png, jpeg, etc.)
@@ -101,7 +103,7 @@ def extract_json():
                 "image": {
                     "format": format_type,
                     "source": {
-                        "bytes": base64_img
+                        "bytes": img_bytes
                     }
                 }
             })
@@ -119,7 +121,7 @@ def extract_json():
             "text": prompt_text
         })
 
-        # Amazon Nova Lite Payload
+        # Amazon Nova Lite Payload Structure
         payload = {
             "messages": [
                 {
@@ -133,21 +135,16 @@ def extract_json():
             }
         }
 
-        # Amazon Nova Lite Model Endpoint
-        url = f"https://bedrock-runtime.{BEDROCK_REGION}.amazonaws.com/model/amazon.nova-lite-v1:0/invoke"
+        # Invoke Amazon Nova Lite using AWS Boto3 SDK
+        response = bedrock_runtime.invoke_model(
+            modelId="us.amazon.nova-lite-v1:0",
+            contentType="application/json",
+            accept="application/json",
+            body=json.dumps(payload)
+        )
 
-        headers = {
-            "Authorization": f"Bearer {AWS_BEARER_TOKEN_BEDROCK}",
-            "Content-Type": "application/json"
-        }
-
-        response = requests.post(url, headers=headers, json=payload)
-
-        if response.status_code != 200:
-            return jsonify({"success": False, "error": f"Amazon Nova Error: {response.text}"}), response.status_code
-
-        response_json = response.json()
-        raw_text = response_json['output']['message']['content'][0]['text']
+        response_body = json.loads(response.get('body').read())
+        raw_text = response_body['output']['message']['content'][0]['text']
 
         cleaned_text = raw_text.replace("```json", "").replace("```", "").strip()
         parsed_json = json.loads(cleaned_text)
@@ -188,3 +185,4 @@ def submit_to_db():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+        
