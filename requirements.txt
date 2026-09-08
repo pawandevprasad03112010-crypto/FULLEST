@@ -6,3 +6,4 @@ pymongo
 Pillow
 requests
 gunicorn
+google-genai
