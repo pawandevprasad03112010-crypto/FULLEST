@@ -317,9 +317,9 @@
     </div>
   </div>
 
-  <!-- Step 2 Card: Gemini AI Raw Detail Photos Upload -->
+  <!-- Step 2 Card: AWS Bedrock Amazon Nova Lite Raw Detail Photos Upload -->
   <div id="aiExtractSection" class="card-box" style="border: 2px solid #8b5cf6;">
-    <div class="main-title" style="color:#8b5cf6;">Step 2: Gemini AI Data Extraction</div>
+    <div class="main-title" style="color:#8b5cf6;">Step 2: AWS Amazon Nova AI Data Extraction</div>
     <p style="font-size:13px; color:#6b7280; margin-bottom:15px; text-align:center;">Original property detail screenshots upload karein JSON extract karne ke liye.</p>
     
     <div class="control-group">
@@ -327,7 +327,7 @@
       <input type="file" id="dataImagesInput" multiple accept="image/*">
     </div>
 
-    <button class="btn-purple" id="extractJsonBtn">Extract Property JSON with Gemini AI</button>
+    <button class="btn-purple" id="extractJsonBtn">Extract Property JSON with Amazon Nova AI</button>
     <div id="aiStatusMsg" class="status-msg"></div>
   </div>
 
@@ -657,13 +657,13 @@
       });
     });
 
-    // STEP 2: Gemini AI Extraction
+    // STEP 2: Amazon Nova AI Extraction
     extractJsonBtn.addEventListener('click', async () => {
       const dataFiles = dataImagesInput.files;
-      if (!dataFiles || dataFiles.length === 0) return alert('Please select raw detail photos for Gemini AI!');
+      if (!dataFiles || dataFiles.length === 0) return alert('Please select raw detail photos for Amazon Nova AI!');
 
       extractJsonBtn.disabled = true;
-      extractJsonBtn.innerText = 'Gemini AI Extracting Data...';
+      extractJsonBtn.innerText = 'Amazon Nova AI Extracting Data...';
       aiStatusMsg.innerText = 'Reading raw photos & generating JSON...';
 
       const formData = new FormData();
@@ -690,7 +690,7 @@
         aiStatusMsg.innerText = 'Extraction Failed!';
       } finally {
         extractJsonBtn.disabled = false;
-        extractJsonBtn.innerText = 'Extract Property JSON with Gemini AI';
+        extractJsonBtn.innerText = 'Extract Property JSON with Amazon Nova AI';
       }
     });
 
