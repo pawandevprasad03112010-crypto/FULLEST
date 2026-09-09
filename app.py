@@ -132,11 +132,11 @@ def extract_json():
         contents = [
             "Extract property details from these images and return strictly a valid JSON object matching "
             "the standard property schema (user_id, category, contact, title_and_description, location, "
-            "pricing, specifications, amenities, media, created_at). Do not add any extra text, markdown ticks only if necessary."
+            "pricing, specifications, amenities, media, created_at)."
         ]
 
         for file in data_files:
-            # 🟢 RAM बचाने के लिए इमेज को रीसाइज और कॉम्प्रेस करना
+            # RAM बचाने और एरर रोकने के लिए इमेज को रीसाइज और कॉम्प्रेस करना
             img = Image.open(file.stream)
             img = img.convert("RGB")
             img.thumbnail((1024, 1024))
@@ -152,17 +152,12 @@ def extract_json():
                 )
             )
 
-        # 🔄 Gemini Models Fallback List
+        # 🔄 सुरक्षित और स्टेबल Gemini Models की लिस्ट (फॉलबैक सिस्टम)
         models_to_try = [
-            'gemini-3.8-flash',
-            'gemini-3.7-flash',
-            'gemini-3.6-flash',
-            'gemini-3.5-flash',
             'gemini-2.5-flash',
             'gemini-2.0-flash',
             'gemini-1.5-flash',
-            'gemini-1.5-pro',
-            'gemini-1.5-flash-latest'
+            'gemini-1.5-pro'
         ]
         
         response = None
@@ -172,7 +167,11 @@ def extract_json():
             try:
                 response = ai_client.models.generate_content(
                     model=model_name,
-                    contents=contents
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.1
+                    )
                 )
                 if response and response.text:
                     break
@@ -183,6 +182,7 @@ def extract_json():
         if not response or not response.text:
             raise Exception(f"All Gemini models failed. Last error: {str(last_error)}")
         
+        # एक्सट्रैक्शन एरर रोकने के लिए सुरक्षित सफाई
         cleaned_text = response.text.replace("```json", "").replace("```", "").strip()
         parsed_json = json.loads(cleaned_text)
 
