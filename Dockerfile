@@ -1,19 +1,9 @@
-FROM python:3.10-slim
-
+FROM python:3.9-slim
 WORKDIR /app
-
-RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    libgomp1 \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
+RUN apt-get update && apt-get install -y build-essential cmake libopencv-dev g++ && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
 COPY . .
-
-EXPOSE 80
-
+RUN g++ -O3 main.cpp `pkg-config --cflags --libs opencv4` -o process_image || g++ -O3 main.cpp `pkg-config --cflags --libs opencv` -o process_image
+EXPOSE 8000
 CMD ["python", "run.py"]
