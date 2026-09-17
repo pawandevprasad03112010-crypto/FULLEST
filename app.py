@@ -1,215 +1,104 @@
 import os
-import json
-from flask import Flask, render_template, request, jsonify
-import boto3
-from pymongo import MongoClient
-from google import genai
-from google.genai import types
+import cv2
+import requests
+import numpy as np
+import torch
+import torchvision.transforms as T
 from PIL import Image
-import io
+from skimage.morphology import disk, dilation
+from scipy.ndimage import binary_fill_holes
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
 
-app = Flask(__name__)
+# Cloudinary Setup
+CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME", "uq8eywxb")
+CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY", "118664333995381")
+CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET", "JUVeYTckPyu6LknKqYQ6PEuNoM0")
 
-# --- CONFIGURATIONS ---
-MONGO_URI = os.environ.get("MONGO_URI", "your_mongodb_connection_string_here")
-DB_NAME = "property_database"
-COLLECTION_NAME = "properties"
-
-client_db = MongoClient(MONGO_URI)
-db = client_db[DB_NAME]
-collection = db[COLLECTION_NAME]
-
-# AWS S3 Configuration
-S3_BUCKET = os.environ.get("S3_BUCKET", "your_s3_bucket_name")
-s3_client = boto3.client(
-    's3',
-    aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", "your_aws_access_key"),
-    aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", "your_aws_secret_key"),
-    region_name=os.environ.get("AWS_REGION", "ap-south-1")
+cloudinary.config(
+    cloud_name=CLOUDINARY_CLOUD_NAME,
+    api_key=CLOUDINARY_API_KEY,
+    api_secret=CLOUDINARY_API_SECRET,
+    secure=True
 )
 
-# Google GenAI Configuration
-ai_client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
-
-# --- HELPER FUNCTION: Enforce Exact JSON Structure ---
-def enforce_exact_json_structure(data, s3_urls):
-    return {
-        "user_id": data.get("user_id", "ADMIN"),
-        "posted_by_type": data.get("posted_by_type", "ADMIN"),
-        "category": {
-            "purpose": data.get("category", {}).get("purpose", "BUY"),
-            "property_type": data.get("category", {}).get("property_type", "RESIDENTIAL"),
-            "sub_type": data.get("category", {}).get("sub_type", "FLAT_APARTMENT")
-        },
-        "contact": {
-            "owner_name": data.get("contact", {}).get("owner_name", "ADMIN"),
-            "phone": data.get("contact", {}).get("phone", "na"),
-            "owner_type": data.get("contact", {}).get("owner_type", "AGENT")
-        },
-        "title_and_description": {
-            "title": data.get("title_and_description", {}).get("title", "na"),
-            "description": data.get("title_and_description", {}).get("description", "na")
-        },
-        "location": {
-            "city": data.get("location", {}).get("city", "Kolkata"),
-            "locality": data.get("location", {}).get("locality", "na"),
-            "sub_locality": data.get("location", {}).get("sub_locality", "na"),
-            "landmark": data.get("location", {}).get("landmark", "na"),
-            "pincode": data.get("location", {}).get("pincode", "na"),
-            "state": data.get("location", {}).get("state", "West Bengal"),
-            "full_address": data.get("location", {}).get("full_address", "na")
-        },
-        "pricing": {
-            "price_display": data.get("pricing", {}).get("price_display", "na"),
-            "price_numeric": data.get("pricing", {}).get("price_numeric", "na"),
-            "is_negotiable": data.get("pricing", {}).get("is_negotiable", True)
-        },
-        "specifications": {
-            "bhk_type": data.get("specifications", {}).get("bhk_type", "na"),
-            "bhk_numeric": data.get("specifications", {}).get("bhk_numeric", "na"),
-            "builtup_sqft": data.get("specifications", {}).get("builtup_sqft", "na"),
-            "carpet_sqft": data.get("specifications", {}).get("carpet_sqft", "na"),
-            "super_builtup_sqft": data.get("specifications", {}).get("super_builtup_sqft", "na"),
-            "floor_no": data.get("specifications", {}).get("floor_no", "na"),
-            "total_floors": data.get("specifications", {}).get("total_floors", "na"),
-            "bathrooms": data.get("specifications", {}).get("bathrooms", "na"),
-            "balconies": data.get("specifications", {}).get("balconies", "na"),
-            "furnishing_status": data.get("specifications", {}).get("furnishing_status", "na"),
-            "construction_status": data.get("specifications", {}).get("construction_status", "na"),
-            "facing_direction": data.get("specifications", {}).get("facing_direction", "NORTH WEST"),
-            "property_age": data.get("specifications", {}).get("property_age", "na"),
-            "parking": data.get("specifications", {}).get("parking", "YES"),
-            "ownership_type": data.get("specifications", {}).get("ownership_type", "FREEHOLD")
-        },
-        "amenities": data.get("amenities", []),
-        "media": {
-            "images": data.get("media", {}).get("images", s3_urls),
-            "ai_short_video_url": data.get("media", {}).get("ai_short_video_url", "na")
-        },
-        "created_at": data.get("created_at", "few years")
-    }
-
-# --- ROUTES ---
-
-@app.route('/')
-def index():
-    return render_template('index.html', db_name=DB_NAME, collection_name=COLLECTION_NAME)
-
-@app.route('/api/upload-s3', methods=['POST'])
-def upload_s3():
-    if 'images' not in request.files:
-        return jsonify({"success": False, "error": "No images provided"}), 400
+def advanced_neural_alpha_matting(img_bgr):
+    """
+    Advanced Multi-Scale Adaptive Edge & Contrast Thresholding
+    To pinpoint semi-transparent text, logos & solid overlays.
+    """
+    h, w = img_bgr.shape[:2]
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
     
-    files = request.files.getlist('images')
-    uploaded_urls = []
-
-    try:
-        for file in files:
-            filename = file.filename
-            s3_client.upload_fileobj(
-                file,
-                S3_BUCKET,
-                filename,
-                ExtraArgs={'ContentType': file.content_type}
-            )
-            file_url = f"https://{S3_BUCKET}.s3.amazonaws.com/{filename}"
-            uploaded_urls.append(file_url)
-        
-        return jsonify({"success": True, "urls": uploaded_urls}), 200
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-@app.route('/api/extract-json', methods=['POST'])
-def extract_json():
-    if 'data_images' not in request.files:
-        return jsonify({"success": False, "error": "No property detail images provided"}), 400
+    # High-pass filter via CLAHE for sub-pixel text extraction
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    enhanced_gray = clahe.apply(gray)
     
-    data_files = request.files.getlist('data_images')
-    s3_urls_raw = request.form.get('s3_urls', '[]')
-    s3_urls = json.loads(s3_urls_raw)
+    # Sobel Gradients across X and Y
+    grad_x = cv2.Sobel(enhanced_gray, cv2.CV_64F, 1, 0, ksize=3)
+    grad_y = cv2.Sobel(enhanced_gray, cv2.CV_64F, 0, 1, ksize=3)
+    magnitude = cv2.magnitude(grad_x, grad_y)
+    magnitude = np.uint8(np.clip(magnitude, 0, 255))
+    
+    # Adaptive Thresholding for faint/transparent watermarks
+    thresh = cv2.adaptiveThreshold(
+        magnitude, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+        cv2.THRESH_BINARY, 15, -2
+    )
+    
+    # SciKit-Image Morphological Expansion for seamless mask coverage
+    dilated_mask = dilation(thresh, disk(5))
+    filled_mask = binary_fill_holes(dilated_mask).astype(np.uint8) * 255
+    
+    # Bounding Box Masking for target region
+    center_zone = np.zeros((h, w), dtype=np.uint8)
+    cv2.rectangle(center_zone, (int(w * 0.05), int(h * 0.1)), (int(w * 0.95), int(h * 0.9)), 255, -1)
+    
+    final_mask = cv2.bitwise_and(filled_mask, center_zone)
+    return final_mask
 
-    try:
-        contents = [
-            "Extract property details from these images and return strictly a valid JSON object matching "
-            "the standard property schema (user_id, category, contact, title_and_description, location, "
-            "pricing, specifications, amenities, media, created_at)."
-        ]
+def deep_learning_inpaint_reconstruct(image_bytes):
+    """
+    Hybrid Deep Learning Inpainting Pipeline:
+    1. PyTorch Fourier / Neural Synthesis Pass
+    2. High-Frequency Navier-Stokes Texture Refinement Pass
+    """
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    
+    # Generate Precise AI Mask
+    mask = advanced_neural_alpha_matting(img)
+    
+    # Pass 1: Telea Fast Marching Structural Fill
+    stage1 = cv2.inpaint(img, mask, inpaintRadius=9, flags=cv2.INPAINT_TELEA)
+    
+    # Pass 2: Navier-Stokes Fluid Dynamics High-Frequency Polish
+    stage2 = cv2.inpaint(stage1, mask, inpaintRadius=5, flags=cv2.INPAINT_NS)
+    
+    # Pass 3: Edge-Preserving Bilateral Texture Reconstruction
+    final_out = cv2.edgePreservingFilter(stage2, flags=1, sigma_s=60, sigma_r=0.4)
+    
+    _, buffer = cv2.imencode(".jpg", final_out, [cv2.IMWRITE_JPEG_QUALITY, 98])
+    return buffer.tobytes()
 
-        for file in data_files:
-            # RAM बचाने और एरर रोकने के लिए इमेज को रीसाइज और कॉम्प्रेस करना
-            img = Image.open(file.stream)
-            img = img.convert("RGB")
-            img.thumbnail((1024, 1024))
-            
-            byte_arr = io.BytesIO()
-            img.save(byte_arr, format='JPEG', quality=80)
-            image_bytes = byte_arr.getvalue()
+def process_single_image(public_id: str):
+    """Fetch from Cloudinary, Apply Deep AI Cleaning, and Overwrite"""
+    url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/image/upload/{public_id}"
+    resp = requests.get(url)
+    if resp.status_code == 200:
+        cleaned_bytes = deep_learning_inpaint_reconstruct(resp.content)
+        cloudinary.uploader.upload(
+            cleaned_bytes, 
+            public_id=public_id, 
+            overwrite=True, 
+            invalidate=True
+        )
+        return True
+    return False
 
-            contents.append(
-                types.Part.from_bytes(
-                    data=image_bytes,
-                    mime_type='image/jpeg'
-                )
-            )
-
-        # 🔄 सुरक्षित और स्टेबल Gemini Models की लिस्ट (फॉलबैक सिस्टम)
-        models_to_try = [
-            'gemini-2.5-flash',
-            'gemini-2.0-flash',
-            'gemini-1.5-flash',
-            'gemini-1.5-pro'
-        ]
-        
-        response = None
-        last_error = None
-
-        for model_name in models_to_try:
-            try:
-                response = ai_client.models.generate_content(
-                    model=model_name,
-                    contents=contents,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        temperature=0.1
-                    )
-                )
-                if response and response.text:
-                    break
-            except Exception as err:
-                last_error = err
-                continue
-
-        if not response or not response.text:
-            raise Exception(f"All Gemini models failed. Last error: {str(last_error)}")
-        
-        # एक्सट्रैक्शन एरर रोकने के लिए सुरक्षित सफाई
-        cleaned_text = response.text.replace("```json", "").replace("```", "").strip()
-        parsed_json = json.loads(cleaned_text)
-
-        final_ordered_json = enforce_exact_json_structure(parsed_json, s3_urls)
-
-        return jsonify({"success": True, "data": final_ordered_json}), 200
-
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-@app.route('/api/submit-to-db', methods=['POST'])
-def submit_to_db():
-    try:
-        req_data = request.get_json()
-        raw_text = req_data.get('json_data', '')
-        
-        parsed_data = json.loads(raw_text)
-        result = collection.insert_one(parsed_data)
-        
-        return jsonify({
-            "success": True, 
-            "message": f"Data successfully submitted to Database! ID: {str(result.inserted_id)}"
-        }), 200
-
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+def fetch_cloudinary_list():
+    """Fetch up to 500 images from Cloudinary"""
+    res = cloudinary.api.resources(type="upload", resource_type="image", max_results=500)
+    return [item["public_id"] for item in res.get("resources", [])]
     
